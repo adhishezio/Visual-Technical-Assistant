@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import re
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -222,22 +223,28 @@ class TechnicalAssistantNodes:
 
     def retrieve_chunks(self, state: AgentState) -> AgentState:
         cache_key = state.get("cache_key")
+        identification = state.get("identification")
         if cache_key is None:
             logger.info("[retrieve] key=None chunks=0")
             return {
                 "retrieved_chunks": [],
                 "current_node": "retrieve_chunks",
             }
+        retrieval_query = self._build_retrieval_query(
+            state["question"],
+            identification,
+        )
         try:
             retrieved_chunks = self.vector_store.similarity_search(
-                query=state["question"],
+                query=retrieval_query,
                 k=self.settings.similarity_search_k,
                 filter_key=cache_key,
             )
         except Exception as exc:
             logger.info(
-                "[retrieve] key=%s chunks=0 error=%r",
+                "[retrieve] key=%s query=%r chunks=0 error=%r",
                 cache_key.value,
+                retrieval_query,
                 str(exc),
             )
             return {
@@ -246,8 +253,9 @@ class TechnicalAssistantNodes:
                 "current_node": "retrieve_chunks",
             }
         logger.info(
-            "[retrieve] key=%s chunks=%s top_sources=%s",
+            "[retrieve] key=%s query=%r chunks=%s top_sources=%s",
             cache_key.value,
+            retrieval_query,
             len(retrieved_chunks),
             [retrieved.chunk.metadata.source_url for retrieved in retrieved_chunks[:3]],
         )
@@ -279,18 +287,25 @@ class TechnicalAssistantNodes:
                 "current_node": "grade_chunks",
             }
 
-        try:
-            grade = generate_structured_content(
-                prompt=build_chunk_grading_prompt(
-                    identification=identification,
-                    question=state["question"],
-                    retrieved_chunks=retrieved_chunks,
-                ),
-                response_schema=ChunkGrade,
-                settings=self.settings,
-            )
-        except GeminiServiceError:
+        if state.get("reused_identification"):
             grade = self._heuristic_grade(identification, state["question"], retrieved_chunks)
+        else:
+            try:
+                grade = generate_structured_content(
+                    prompt=build_chunk_grading_prompt(
+                        identification=identification,
+                        question=state["question"],
+                        retrieved_chunks=retrieved_chunks,
+                    ),
+                    response_schema=ChunkGrade,
+                    settings=self.settings,
+                )
+            except GeminiServiceError:
+                grade = self._heuristic_grade(
+                    identification,
+                    state["question"],
+                    retrieved_chunks,
+                )
 
         needs_refetch = (not grade.sufficient) and (
             fetch_attempts < self.settings.max_fetch_attempts
@@ -336,13 +351,18 @@ class TechnicalAssistantNodes:
                 settings=self.settings,
             )
         except GeminiServiceError:
+            fallback_answer = self._build_extractive_answer(
+                state["question"],
+                retrieved_chunks,
+            )
             logger.info(
-                "[generate] chunks=%s has_citations=False error=%r",
+                "[generate] chunks=%s has_citations=%s error=%r",
                 len(retrieved_chunks),
+                fallback_answer.has_citations,
                 "generation failed",
             )
             return {
-                "answer": build_safe_answer(),
+                "answer": fallback_answer,
                 "current_node": "generate_answer",
             }
 
@@ -416,5 +436,197 @@ class TechnicalAssistantNodes:
         retrieved_chunks: list[RetrievedChunk],
     ) -> ChunkGrade:
         del identification
-        del question
-        return ChunkGrade(sufficient=bool(retrieved_chunks), confidence=0.5)
+        question_tokens = _question_tokens(question)
+        needs_electrical_value = bool(
+            {"voltage", "current", "power", "watt", "amp", "input", "operating"}
+            & question_tokens
+        )
+        best_overlap = 0
+        found_measurement = False
+
+        for retrieved in retrieved_chunks:
+            lowered = retrieved.chunk.chunk_text.lower()
+            overlap = sum(token in lowered for token in question_tokens)
+            best_overlap = max(best_overlap, overlap)
+            if re.search(
+                r"\b\d+(?:\.\d+)?\s?(?:v|vac|vdc|a|ma|w|kw|hz)\b",
+                lowered,
+            ):
+                found_measurement = True
+
+        if needs_electrical_value:
+            sufficient = best_overlap >= 1 and found_measurement
+            return ChunkGrade(
+                sufficient=sufficient,
+                confidence=0.75 if sufficient else 0.2,
+                reasoning=(
+                    "retrieved chunks mention the requested electrical property"
+                    if sufficient
+                    else "retrieved chunks do not clearly mention the requested electrical specification"
+                ),
+            )
+
+        sufficient = best_overlap >= 2
+        return ChunkGrade(
+            sufficient=sufficient,
+            confidence=0.6 if sufficient else 0.25,
+            reasoning=(
+                "retrieved chunks overlap with the question terms"
+                if sufficient
+                else "retrieved chunks have low lexical overlap with the question"
+            ),
+        )
+
+    @staticmethod
+    def _build_retrieval_query(
+        question: str,
+        identification: ComponentIdentification | None,
+    ) -> str:
+        if identification is None:
+            return question
+
+        tokens = [
+            question.strip(),
+            identification.manufacturer or "",
+            identification.model_number or "",
+            identification.part_number or "",
+            identification.component_type or "",
+        ]
+        return " ".join(token for token in tokens if token).strip()
+
+    @staticmethod
+    def _build_extractive_answer(
+        question: str,
+        retrieved_chunks: list[RetrievedChunk],
+    ) -> AnswerWithCitations:
+        if not retrieved_chunks:
+            return build_safe_answer()
+
+        question_tokens = {
+            token for token in _question_tokens(question)
+        }
+        needs_electrical_value = bool(
+            {"voltage", "current", "power", "watt", "amp", "input", "operating"}
+            & question_tokens
+        )
+        best_sentence = ""
+        best_chunk: RetrievedChunk | None = None
+        best_score = -1
+
+        for retrieved in retrieved_chunks:
+            sentences = re.split(r"(?<=[.!?])\s+|\n+", retrieved.chunk.chunk_text)
+            for sentence in sentences:
+                cleaned = " ".join(sentence.split()).strip()
+                if len(cleaned) < 20:
+                    continue
+                lowered = cleaned.lower()
+                overlap = sum(token in lowered for token in question_tokens)
+                has_measurement = bool(
+                    needs_electrical_value
+                    and re.search(
+                        r"\b\d+(?:\.\d+)?\s?(?:v|vac|vdc|a|ma|w|kw|hz)\b",
+                        lowered,
+                    )
+                )
+                value_bonus = 2 if has_measurement else 0
+                score = overlap + value_bonus
+                if score > best_score:
+                    best_score = score
+                    best_sentence = cleaned
+                    best_chunk = retrieved
+
+        if best_chunk is None or best_score <= 0:
+            return build_safe_answer()
+
+        if needs_electrical_value:
+            if not re.search(
+                r"\b\d+(?:\.\d+)?\s?(?:v|vac|vdc|a|ma|w|kw|hz)\b",
+                best_sentence.lower(),
+            ):
+                return build_safe_answer()
+            formatted = _extract_electrical_answer(
+                best_chunk.chunk.chunk_text,
+                question,
+            )
+            if formatted:
+                best_sentence = formatted
+
+        return AnswerWithCitations(
+            answer_text=best_sentence,
+            citations=[best_chunk],
+            confidence=0.42,
+        )
+
+
+def _question_tokens(question: str) -> set[str]:
+    stopwords = {
+        "what",
+        "which",
+        "this",
+        "that",
+        "with",
+        "from",
+        "your",
+        "have",
+        "into",
+        "about",
+        "component",
+        "device",
+        "please",
+        "could",
+        "would",
+        "there",
+        "their",
+        "input",
+        "operating",
+    }
+    return {
+        token
+        for token in re.findall(r"[a-z0-9]+", question.lower())
+        if len(token) > 2 and token not in stopwords
+    }
+
+
+def _extract_electrical_answer(chunk_text: str, question: str) -> str | None:
+    question_lower = question.lower()
+    if "voltage" in question_lower:
+        patterns = [
+            r"(?:input voltage|operating voltage|power supply|device input)[^.;\n]{0,48}\b\d+(?:\.\d+)?(?:\s?-\s?\d+(?:\.\d+)?)?\s?V(?:\s?(?:AC|DC))?\b",
+        ]
+    elif "current" in question_lower or "amp" in question_lower:
+        patterns = [
+            r"(?:current|power supply|device input)[^.;\n]{0,48}\b\d+(?:\.\d+)?\s?(?:A|mA)\b",
+        ]
+    elif "power" in question_lower or "watt" in question_lower:
+        patterns = [
+            r"(?:power consumption|power supply)[^.;\n]{0,48}\b\d+(?:\.\d+)?\s?(?:W|kW)\b",
+        ]
+    else:
+        patterns = [
+            r"(?:power supply|device input|input voltage|operating voltage)[^.;\n]{0,90}\b\d+(?:\.\d+)?\s?(?:v|vac|vdc)\b[^.;\n]{0,30}",
+            r"(?:power consumption|current|frequency)[^.;\n]{0,70}\b\d+(?:\.\d+)?\s?(?:a|ma|w|kw|hz)\b[^.;\n]{0,20}",
+        ]
+    for pattern in patterns:
+        for match in re.finditer(pattern, chunk_text, flags=re.IGNORECASE):
+            cleaned = " ".join(match.group(0).split()).strip(" -")
+            cleaned = re.sub(
+                r"\b(\d{3})(\d{3})\s+V\b",
+                r"\1-\2 V",
+                cleaned,
+                flags=re.IGNORECASE,
+            )
+            cleaned = re.sub(
+                r"\b(\d{3})(\d{3})\s+V\s+(AC|DC)\b",
+                r"\1-\2 V \3",
+                cleaned,
+                flags=re.IGNORECASE,
+            )
+            cleaned = re.sub(
+                r"\b(\d{2})(\d{2})\s+Hz\b",
+                r"\1-\2 Hz",
+                cleaned,
+                flags=re.IGNORECASE,
+            )
+            if cleaned:
+                return f"{cleaned}."
+    return None

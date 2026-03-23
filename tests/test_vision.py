@@ -123,6 +123,31 @@ def test_visual_only_result_stays_in_fallback_tier_three(test_settings) -> None:
     assert result.should_attempt_document_lookup is True
 
 
+def test_label_based_model_match_gets_stronger_confidence(test_settings) -> None:
+    service = VisionIdentificationService(
+        settings=test_settings,
+        vision_client=FakeVisionClient(
+            VisionExtraction(
+                manufacturer="Huawei",
+                model_number="WS7200",
+                part_number=None,
+                component_type="router",
+                visual_description="White router with printed label.",
+                extracted_text="HUAWEI WS7200",
+                confidence_score=0.95,
+                part_number_confidence=0.0,
+            )
+        ),
+        ocr_client=FakeOCRClient(OCRResult()),
+    )
+
+    result = service.identify_component(image_bytes=b"test-image")
+
+    assert result.fallback_tier is FallbackTier.OCR_PARTIAL
+    assert result.confidence_score >= 0.75
+    assert result.should_attempt_document_lookup is True
+
+
 def test_vision_failures_are_exposed_in_error_details(test_settings) -> None:
     service = VisionIdentificationService(
         settings=test_settings,

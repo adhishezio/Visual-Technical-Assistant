@@ -36,11 +36,14 @@ class VisualTechnicalAssistantAgent:
         image_bytes: bytes,
         question: str,
         mime_type: str = "image/jpeg",
+        identification=None,
     ) -> AnswerWithCitations:
         initial_state: AgentState = {
             "image_bytes": image_bytes,
             "mime_type": mime_type,
             "question": question,
+            "identification": identification,
+            "reused_identification": identification is not None,
             "retrieved_chunks": [],
             "documentation_candidates": [],
             "fetch_attempts": 0,
@@ -61,7 +64,14 @@ def build_graph(nodes: TechnicalAssistantNodes):
     graph.add_node("generate_answer", nodes.generate_answer)
     graph.add_node("validate_citations", nodes.validate_citations)
 
-    graph.add_edge(START, "identify_component")
+    graph.add_conditional_edges(
+        START,
+        lambda state: "build_cache_key" if state.get("identification") else "identify_component",
+        {
+            "identify_component": "identify_component",
+            "build_cache_key": "build_cache_key",
+        },
+    )
     graph.add_edge("identify_component", "build_cache_key")
     graph.add_edge("build_cache_key", "check_cache")
     graph.add_conditional_edges(

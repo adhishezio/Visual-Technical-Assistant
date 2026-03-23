@@ -86,7 +86,7 @@ export function DataPanel({
 
   if (state === 'default') {
     return (
-      <div className="flex flex-1 flex-col items-center justify-center p-8 text-center lg:flex-initial lg:h-full">
+      <div className="flex min-h-0 flex-1 flex-col items-center justify-center p-8 text-center">
         <div className="flex size-16 items-center justify-center rounded-full bg-muted">
           <Cpu className="size-8 text-muted-foreground" />
         </div>
@@ -103,7 +103,7 @@ export function DataPanel({
 
   if (state === 'scanning') {
     return (
-      <div className="flex flex-1 flex-col gap-6 p-4 lg:flex-initial lg:h-full">
+      <div className="flex min-h-0 flex-1 flex-col gap-6 p-4">
         <div className="animate-pulse space-y-4">
           <div className="flex items-center gap-4">
             <div className="size-14 rounded-xl bg-muted" />
@@ -131,8 +131,8 @@ export function DataPanel({
   const specs = buildSpecs(identification)
 
   return (
-    <div className="flex flex-1 flex-col lg:flex-initial lg:h-full">
-      <ScrollArea className="flex-1">
+    <div className="flex min-h-0 flex-1 flex-col">
+      <ScrollArea className="min-h-0 flex-1">
         <div className="space-y-4 p-4">
           {errorMessage && (
             <div className="rounded-2xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950">
@@ -389,7 +389,7 @@ function ChatMessageBubble({ message }: { message: ChatMessage }) {
                   </span>
                   <span className="text-xs text-muted-foreground">
                     {citation.documentType}
-                    {citation.pageNumber ? ` • page ${citation.pageNumber}` : ''}
+                    {citation.pageNumber ? ` | page ${citation.pageNumber}` : ''}
                   </span>
                 </div>
                 <ExternalLink className="ml-1 size-3.5 text-muted-foreground" />

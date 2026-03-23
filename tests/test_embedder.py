@@ -4,6 +4,7 @@ from typing import Any, TypedDict, cast
 
 from backend.core.config import EmbeddingProvider
 from backend.services.embedder import (
+    EMBEDDING_CHAR_BUDGET,
     EMBEDDING_BATCH_LIMIT,
     RETRIEVAL_DOCUMENT_TASK,
     RETRIEVAL_QUERY_TASK,
@@ -108,4 +109,29 @@ def test_vertex_text_embedder_batches_requests_at_250(test_settings) -> None:
         for call in model.calls
         for item in call["texts"]
     )
+
+
+def test_vertex_text_embedder_respects_character_budget(test_settings) -> None:
+    settings = test_settings.model_copy(
+        update={
+            "embedding_provider": EmbeddingProvider.VERTEX,
+            "embedding_model": "text-embedding-005",
+            "embedding_dimension": 3,
+            "vertex_project_id": "jobhunt-490400",
+            "vertex_ai_location": "us-central1",
+        }
+    )
+    model = _FakeModel()
+    embedder = VertexTextEmbedder(
+        settings=settings,
+        model=cast(Any, model),
+        text_input_factory=lambda text, task: {"text": text, "task": task},
+    )
+
+    chunk = "x" * (EMBEDDING_CHAR_BUDGET // 2 + 100)
+    texts = [chunk, chunk, "tail"]
+    vectors = embedder.embed_documents(texts)
+
+    assert len(vectors) == len(texts)
+    assert [len(call["texts"]) for call in model.calls] == [1, 2]
 

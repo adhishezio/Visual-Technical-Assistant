@@ -55,6 +55,12 @@ function buildIdentificationMessage(
     lines.push(identification.visual_description)
   }
 
+  if (!identification.part_number && identification.model_number) {
+    lines.push(
+      'Confidence is lower because the system matched the manufacturer and model, but it did not confirm an exact part number from the label.',
+    )
+  }
+
   if (identification.should_attempt_document_lookup) {
     lines.push(
       'Ask a specification or maintenance question and the system will retrieve cited documentation before answering.',
@@ -178,7 +184,11 @@ export default function HomePage() {
     setErrorMessage(null)
 
     try {
-      const answer = await queryComponent(selectedImage.file, question)
+      const answer = await queryComponent(
+        selectedImage.file,
+        question,
+        identification,
+      )
       setMessages((current) => [...current, buildAnswerMessage(answer)])
     } catch (error) {
       const message = getErrorMessage(error)
@@ -198,17 +208,17 @@ export default function HomePage() {
   }
 
   return (
-    <div className="flex min-h-svh flex-col bg-background">
+    <div className="flex h-svh flex-col overflow-hidden bg-background">
       <Header />
 
-      <main className="flex flex-1 flex-col lg:flex-row">
+      <main className="flex min-h-0 flex-1 flex-col xl:grid xl:grid-cols-[minmax(0,1.2fr)_minmax(380px,460px)] xl:overflow-hidden">
         <CameraStage
           state={stageState}
           selectedImage={selectedImage}
           onImageSelected={handleImageSelected}
         />
 
-        <div className="flex flex-1 flex-col border-t bg-card lg:w-[420px] lg:shrink-0 lg:flex-initial lg:border-l lg:border-t-0">
+        <div className="flex min-h-0 flex-1 flex-col border-t bg-card xl:border-l xl:border-t-0">
           <DataPanel
             state={stageState}
             identification={identification}

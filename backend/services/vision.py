@@ -164,6 +164,8 @@ class VisionIdentificationService:
             ),
             fallback_tier=fallback_tier,
             has_part_number=bool(part_number),
+            has_model_number=bool(vision_extraction.model_number),
+            has_manufacturer=bool(vision_extraction.manufacturer),
         )
         should_attempt_document_lookup = (
             confidence >= self.settings.identification_confidence_threshold
@@ -334,6 +336,8 @@ def calculate_identification_confidence(
     part_number_confidence: float,
     fallback_tier: FallbackTier,
     has_part_number: bool,
+    has_model_number: bool,
+    has_manufacturer: bool,
 ) -> float:
     if fallback_tier is FallbackTier.OCR_CONFIRMED:
         score = (vision_confidence * 0.45) + (part_number_confidence * 0.55)
@@ -341,7 +345,17 @@ def calculate_identification_confidence(
             score += 0.1
         return min(score, 1.0)
     if fallback_tier is FallbackTier.OCR_PARTIAL:
-        return min((vision_confidence * 0.6) + (part_number_confidence * 0.4), 1.0)
+        score = (vision_confidence * 0.65) + (part_number_confidence * 0.35)
+        if has_model_number:
+            score += 0.12
+        if has_manufacturer:
+            score += 0.06
+        return min(score, 0.92)
     if fallback_tier is FallbackTier.VISION_ONLY:
-        return min(vision_confidence * 0.85, 1.0)
+        score = vision_confidence * 0.8
+        if has_model_number:
+            score += 0.08
+        if has_manufacturer:
+            score += 0.04
+        return min(score, 0.88)
     return 0.0

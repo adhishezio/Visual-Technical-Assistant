@@ -97,10 +97,14 @@ export async function identifyComponent(imageFile: File): Promise<ComponentIdent
 export async function queryComponent(
   imageFile: File,
   question: string,
+  identification?: ComponentIdentification | null,
 ): Promise<AnswerWithCitations> {
   const formData = new FormData()
   formData.append("image", imageFile)
   formData.append("question", question)
+  if (identification) {
+    formData.append("identification", JSON.stringify(identification))
+  }
 
   const response = await fetch(`${getApiBaseUrl()}/query`, {
     method: "POST",

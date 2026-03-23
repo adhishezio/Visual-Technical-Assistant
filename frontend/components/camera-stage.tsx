@@ -104,7 +104,7 @@ export function CameraStage({
   }
 
   return (
-    <div className="relative flex h-[45vh] flex-col bg-muted lg:h-full lg:flex-1">
+    <div className="relative flex min-h-[42vh] flex-col overflow-hidden bg-muted/70 sm:min-h-[50vh] xl:min-h-0 xl:h-full xl:flex-1">
       <input
         ref={fileInputRef}
         type="file"
@@ -222,15 +222,15 @@ function ActiveState({
   onUploadNewImage: () => void
 }) {
   return (
-    <div className="relative flex-1">
+    <div className="relative flex flex-1 items-center justify-center overflow-hidden bg-slate-950">
       <img
         src={image.previewUrl}
         alt={image.name}
-        className="absolute inset-0 size-full object-cover"
+        className="absolute inset-0 size-full bg-slate-950 object-contain p-4 sm:p-6 xl:p-8"
       />
 
       <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-        <div className="relative size-48 sm:size-64">
+        <div className="relative h-[min(55vh,24rem)] w-[min(80vw,32rem)] max-w-[calc(100%-2rem)] sm:h-[min(60vh,28rem)] sm:w-[min(75vw,36rem)] xl:h-[min(70vh,32rem)] xl:w-[min(55vw,42rem)]">
           <div className="absolute left-0 top-0 size-8 border-l-2 border-t-2 border-white/80" />
           <div className="absolute right-0 top-0 size-8 border-r-2 border-t-2 border-white/80" />
           <div className="absolute bottom-0 left-0 size-8 border-b-2 border-l-2 border-white/80" />

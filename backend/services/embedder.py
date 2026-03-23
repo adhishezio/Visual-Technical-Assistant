@@ -8,6 +8,7 @@ from typing import Any, Callable, Protocol, Sequence, cast
 from backend.core.config import EmbeddingProvider, Settings, get_settings
 
 EMBEDDING_BATCH_LIMIT = 250
+EMBEDDING_CHAR_BUDGET = 12000
 RETRIEVAL_DOCUMENT_TASK = "RETRIEVAL_DOCUMENT"
 RETRIEVAL_QUERY_TASK = "RETRIEVAL_QUERY"
 
@@ -95,8 +96,7 @@ class VertexTextEmbedder:
             return [[0.0] * self.settings.embedding_dimension for _ in texts]
 
         resolved_vectors = [[0.0] * self.settings.embedding_dimension for _ in texts]
-        for batch_start in range(0, len(non_empty), EMBEDDING_BATCH_LIMIT):
-            batch = non_empty[batch_start : batch_start + EMBEDDING_BATCH_LIMIT]
+        for batch in _build_embedding_batches(non_empty):
             inputs = [
                 self.text_input_factory(text, task_type)
                 for _, text in batch
@@ -146,6 +146,37 @@ class VertexTextEmbedder:
             _VertexEmbeddingModelLike,
             TextEmbeddingModel.from_pretrained(self.settings.embedding_model),
         )
+
+
+def _build_embedding_batches(
+    indexed_texts: Sequence[tuple[int, str]],
+) -> list[list[tuple[int, str]]]:
+    batches: list[list[tuple[int, str]]] = []
+    current_batch: list[tuple[int, str]] = []
+    current_chars = 0
+
+    for indexed_text in indexed_texts:
+        _, text = indexed_text
+        text_length = max(1, len(text))
+        should_flush = (
+            current_batch
+            and (
+                len(current_batch) >= EMBEDDING_BATCH_LIMIT
+                or current_chars + text_length > EMBEDDING_CHAR_BUDGET
+            )
+        )
+        if should_flush:
+            batches.append(current_batch)
+            current_batch = []
+            current_chars = 0
+
+        current_batch.append(indexed_text)
+        current_chars += text_length
+
+    if current_batch:
+        batches.append(current_batch)
+
+    return batches
 
 
 def _build_text_embedding_input(text: str, task_type: str) -> object:

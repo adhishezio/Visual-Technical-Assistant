@@ -32,18 +32,32 @@ class FakeAgent(VisualTechnicalAssistantAgent):
     def __init__(self, answer: AnswerWithCitations) -> None:
         self._answer = answer
 
-    def run(self, image_bytes: bytes, question: str, mime_type: str = "image/jpeg") -> AnswerWithCitations:
+    def run(
+        self,
+        image_bytes: bytes,
+        question: str,
+        mime_type: str = "image/jpeg",
+        identification: ComponentIdentification | None = None,
+    ) -> AnswerWithCitations:
         del image_bytes
         del question
         del mime_type
+        del identification
         return self._answer
 
 
 class RaisingAgent:
-    def run(self, image_bytes: bytes, question: str, mime_type: str = "image/jpeg") -> AnswerWithCitations:
+    def run(
+        self,
+        image_bytes: bytes,
+        question: str,
+        mime_type: str = "image/jpeg",
+        identification: ComponentIdentification | None = None,
+    ) -> AnswerWithCitations:
         del image_bytes
         del question
         del mime_type
+        del identification
         raise RuntimeError("provider failure")
 
 
@@ -106,6 +120,48 @@ def test_query_endpoint_returns_safe_message_on_runtime_failure() -> None:
 
     assert response.status_code == 200
     assert response.json()["answer_text"] == build_safe_answer().answer_text
+
+
+def test_query_endpoint_accepts_prior_identification_payload() -> None:
+    captured: dict[str, object] = {}
+
+    class CapturingAgent:
+        def run(
+            self,
+            image_bytes: bytes,
+            question: str,
+            mime_type: str = "image/jpeg",
+            identification: ComponentIdentification | None = None,
+        ) -> AnswerWithCitations:
+            del image_bytes
+            del mime_type
+            captured["question"] = question
+            captured["identification"] = identification
+            return build_safe_answer()
+
+    app.dependency_overrides[get_agent_runner] = lambda: CapturingAgent()
+
+    response = client.post(
+        "/query",
+        data={
+            "question": "What is the input voltage?",
+            "identification": ComponentIdentification(
+                manufacturer="Huawei",
+                model_number="WS7200",
+                component_type="router",
+                confidence_score=0.81,
+                raw_ocr_text="HUAWEI WS7200",
+                should_attempt_document_lookup=True,
+            ).model_dump_json(),
+        },
+        files={"image": ("component.jpg", b"image-bytes", "image/jpeg")},
+    )
+
+    assert response.status_code == 200
+    assert captured["question"] == "What is the input voltage?"
+    identification = captured["identification"]
+    assert isinstance(identification, ComponentIdentification)
+    assert identification.model_number == "WS7200"
 
 
 

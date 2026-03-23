@@ -26,3 +26,4 @@ class AgentState(TypedDict, total=False):
     needs_refetch: bool
     refined_query: str | None
     fetch_attempts: int
+    reused_identification: bool
