@@ -30,6 +30,8 @@ jobs:
 
   typecheck:
     runs-on: ubuntu-latest
+    env:
+      PYTHONPATH: .
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -95,4 +97,58 @@ jobs:
           recreate: true
           path: coverage.txt
 
+  deploy:
+    needs: [lint, typecheck, test]
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    permissions:
+      contents: read
+      id-token: write
 
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
+          service_account: ${{ secrets.GCP_SA_EMAIL }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - name: Configure Docker for Artifact Registry
+        run: gcloud auth configure-docker us-central1-docker.pkg.dev --quiet
+
+      - name: Build Docker image
+        run: |
+          docker build \
+            -f Dockerfile \
+            -t us-central1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/visual-tech-assistant/backend:${{ github.sha }} \
+            -t us-central1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/visual-tech-assistant/backend:latest \
+            .
+
+      - name: Push to Artifact Registry
+        run: |
+          docker push us-central1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/visual-tech-assistant/backend:${{ github.sha }}
+          docker push us-central1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/visual-tech-assistant/backend:latest
+
+      - name: Deploy to Cloud Run
+        run: |
+          gcloud run deploy visual-tech-assistant \
+            --image=us-central1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/visual-tech-assistant/backend:${{ github.sha }} \
+            --region=${{ secrets.GCP_REGION }} \
+            --project=${{ secrets.GCP_PROJECT_ID }} \
+            --service-account=${{ secrets.GCP_SA_EMAIL }} \
+            --min-instances=0 \
+            --max-instances=3 \
+            --concurrency=80 \
+            --timeout=60 \
+            --set-env-vars="VECTOR_STORE=chroma,GOOGLE_CLOUD_PROJECT=gen-lang-client-0680686270,GOOGLE_CLOUD_LOCATION=us-central1,VERTEX_PROJECT_ID=jobhunt-490400,VERTEX_AI_LOCATION=us-central1,FIRESTORE_PROJECT_ID=jobhunt-490400,FIRESTORE_COLLECTION=component_chunks" \
+            --allow-unauthenticated
+
+      - name: Output Service URL
+        run: |
+          gcloud run services describe visual-tech-assistant \
+            --region=${{ secrets.GCP_REGION }} \
+            --project=${{ secrets.GCP_PROJECT_ID }} \
+            --format="value(status.url)"
