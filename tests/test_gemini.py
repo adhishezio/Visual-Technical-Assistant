@@ -4,7 +4,6 @@ import json
 
 from backend.core.config import Environment
 from backend.core.models import VisionExtraction
-from backend.services import gemini as gemini_service
 from backend.services.gemini import build_gemini_client, generate_structured_content
 
 
@@ -119,3 +118,4 @@ def test_build_gemini_client_uses_vertex_in_production(monkeypatch, test_setting
             "location": "us-central1",
         }
     ]
+
