@@ -33,6 +33,13 @@ class FailingVisionClient:
         raise RuntimeError("gemini parse failure")
 
 
+class FailingOCRClient:
+    def extract(self, image_bytes: bytes, mime_type: str) -> OCRResult:
+        del image_bytes
+        del mime_type
+        raise RuntimeError("trocr import failure")
+
+
 def test_high_confidence_gemini_part_number_skips_trocr(test_settings) -> None:
     ocr_client = FakeOCRClient(OCRResult(raw_text="unused", average_confidence=0.0))
     service = VisionIdentificationService(
@@ -127,3 +134,29 @@ def test_vision_failures_are_exposed_in_error_details(test_settings) -> None:
 
     assert result.error_details == "Vision extraction failed: gemini parse failure"
     assert result.requires_manual_input is True
+
+
+def test_ocr_failures_fall_back_to_vision_only_result(test_settings) -> None:
+    service = VisionIdentificationService(
+        settings=test_settings,
+        vision_client=FakeVisionClient(
+            VisionExtraction(
+                manufacturer="Huawei",
+                model_number="WS7200",
+                part_number=None,
+                component_type="router",
+                visual_description="White router with status LED strip.",
+                extracted_text="WS7200",
+                confidence_score=0.82,
+                part_number_confidence=0.0,
+            )
+        ),
+        ocr_client=FailingOCRClient(),
+    )
+
+    result = service.identify_component(image_bytes=b"test-image")
+
+    assert result.manufacturer == "Huawei"
+    assert result.model_number == "WS7200"
+    assert result.fallback_tier is FallbackTier.OCR_PARTIAL
+    assert result.error_details == "TrOCR fallback failed: trocr import failure"

@@ -65,7 +65,6 @@ class GeminiVisionClient:
 class TrOCRClient:
     def __init__(self, settings: Settings | None = None) -> None:
         self.settings = settings or get_settings()
-        _load_trocr_artifacts(self.settings.trocr_model, self.settings.trocr_device)
 
     def extract(self, image_bytes: bytes, mime_type: str) -> OCRResult:
         del mime_type

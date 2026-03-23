@@ -56,14 +56,22 @@ export interface AnswerWithCitations {
   has_citations: boolean
 }
 
+const DEFAULT_API_BASE_URL =
+  'https://visual-tech-assistant-504255859107.us-central1.run.app'
+
 function getApiBaseUrl(): string {
   const apiUrl = process.env.NEXT_PUBLIC_API_URL
-  if (!apiUrl) {
-    throw new Error(
-      "NEXT_PUBLIC_API_URL is not configured. Add it to frontend/.env.local.",
+  if (apiUrl) {
+    return apiUrl.replace(/\/+$/, '')
+  }
+
+  if (typeof window !== 'undefined') {
+    console.warn(
+      'NEXT_PUBLIC_API_URL is not configured. Falling back to the live Cloud Run backend.',
     )
   }
-  return apiUrl.replace(/\/+$/, "")
+
+  return DEFAULT_API_BASE_URL
 }
 
 async function parseJsonResponse<T>(response: Response): Promise<T> {
