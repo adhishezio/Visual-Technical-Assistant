@@ -93,7 +93,7 @@ def test_identify_endpoint_returns_typed_identification() -> None:
     assert body["should_attempt_document_lookup"] is True
 
 
-def test_identify_endpoint_primes_cache_in_background() -> None:
+def test_identify_endpoint_primes_cache_in_background(monkeypatch) -> None:
     captured: dict[str, object] = {}
 
     class PrimingAgent:
@@ -101,8 +101,15 @@ def test_identify_endpoint_primes_cache_in_background() -> None:
             captured["identification"] = identification
             return True
 
+    def fake_launch_cache_prime(agent, identification):
+        agent.prime_cache(identification)
+
     app.dependency_overrides[get_vision_service] = lambda: FakeVisionService()
     app.dependency_overrides[get_identify_agent_runner] = lambda: PrimingAgent()
+    monkeypatch.setattr(
+        "backend.api.routes.identify._launch_cache_prime",
+        fake_launch_cache_prime,
+    )
 
     response = client.post(
         "/identify",

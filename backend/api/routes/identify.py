@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import logging
+from threading import Thread
 from functools import lru_cache
 
-from fastapi import APIRouter, BackgroundTasks, Depends, File, UploadFile
+from fastapi import APIRouter, Depends, File, UploadFile
 
 from backend.agent.graph import VisualTechnicalAssistantAgent
 from backend.core.models import ComponentIdentification
@@ -29,7 +30,6 @@ def get_agent_runner() -> VisualTechnicalAssistantAgent | None:
 
 @router.post("", response_model=ComponentIdentification)
 async def identify_component(
-    background_tasks: BackgroundTasks,
     image: UploadFile = File(...),
     vision_service: VisionIdentificationService = Depends(get_vision_service),
     agent: VisualTechnicalAssistantAgent | None = Depends(get_agent_runner),
@@ -40,8 +40,20 @@ async def identify_component(
         mime_type=image.content_type or "image/jpeg",
     )
     if identification.should_attempt_document_lookup and agent is not None:
-        background_tasks.add_task(_prime_cache_safely, agent, identification)
+        _launch_cache_prime(agent, identification)
     return identification
+
+
+def _launch_cache_prime(
+    agent: VisualTechnicalAssistantAgent,
+    identification: ComponentIdentification,
+) -> None:
+    Thread(
+        target=_prime_cache_safely,
+        args=(agent, identification),
+        daemon=True,
+        name="prime-cache",
+    ).start()
 
 
 def _prime_cache_safely(
