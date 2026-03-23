@@ -2,7 +2,7 @@
 
 Production-grade AI system for identifying industrial and electronic components from an image and answering technical questions with citations from official documentation retrieved on demand.
 
-[![Live Demo](https://img.shields.io/badge/live-demo-Cloud%20Run-4285F4?logo=googlecloud&logoColor=white)](https://visual-tech-assistant-504255859107.us-central1.run.app)
+[![Live Demo](https://img.shields.io/badge/live-demo-Vercel-000000?logo=vercel&logoColor=white)](https://frontend-two-beta-rpjynziimi.vercel.app)
 ![Python 3.11](https://img.shields.io/badge/Python-3.11-3776AB?logo=python&logoColor=white)
 ![FastAPI](https://img.shields.io/badge/FastAPI-API-009688?logo=fastapi&logoColor=white)
 ![Docker](https://img.shields.io/badge/Docker-containerized-2496ED?logo=docker&logoColor=white)
