@@ -5,7 +5,7 @@ from enum import Enum
 from functools import lru_cache
 from pathlib import Path
 
-from pydantic import Field, model_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -108,6 +108,13 @@ class Settings(BaseSettings):
         default="us-central1",
         alias="GOOGLE_CLOUD_LOCATION",
     )
+    cors_allow_origins: list[str] = Field(
+        default_factory=lambda: [
+            "http://localhost:3000",
+            "http://127.0.0.1:3000",
+        ],
+        alias="CORS_ALLOW_ORIGINS",
+    )
     google_api_key: str | None = Field(default=None, alias="GOOGLE_API_KEY")
     gemini_model: str = Field(default="gemini-2.0-flash", alias="GEMINI_MODEL")
 
@@ -155,6 +162,13 @@ class Settings(BaseSettings):
     document_chunk_overlap: int = Field(default=200, alias="DOCUMENT_CHUNK_OVERLAP")
     max_fetch_attempts: int = Field(default=2, alias="MAX_FETCH_ATTEMPTS")
     similarity_search_k: int = Field(default=4, alias="SIMILARITY_SEARCH_K")
+
+    @field_validator("cors_allow_origins", mode="before")
+    @classmethod
+    def parse_cors_allow_origins(cls, value: object) -> object:
+        if isinstance(value, str):
+            return [origin.strip() for origin in value.split(",") if origin.strip()]
+        return value
 
     @model_validator(mode="after")
     def validate_vertex_runtime_config(self) -> "Settings":

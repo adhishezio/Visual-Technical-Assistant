@@ -4,6 +4,7 @@ import logging
 from functools import lru_cache
 
 from fastapi import Depends, FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 from backend.api.routes.identify import router as identify_router
 from backend.api.routes.query import router as query_router
@@ -22,6 +23,13 @@ backend_logger.propagate = False
 
 settings = get_settings()
 app = FastAPI(title=settings.app_name, debug=settings.debug)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.cors_allow_origins,
+    allow_credentials=False,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 app.include_router(identify_router, prefix="/identify", tags=["identify"])
 app.include_router(query_router, prefix="/query", tags=["query"])
 
