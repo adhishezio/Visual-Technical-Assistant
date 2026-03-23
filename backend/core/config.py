@@ -118,6 +118,11 @@ class Settings(BaseSettings):
     )
     google_api_key: str | None = Field(default=None, alias="GOOGLE_API_KEY")
     gemini_model: str = Field(default="gemini-2.0-flash", alias="GEMINI_MODEL")
+    gemini_max_retries: int = Field(default=3, alias="GEMINI_MAX_RETRIES")
+    gemini_retry_backoff_seconds: float = Field(
+        default=1.0,
+        alias="GEMINI_RETRY_BACKOFF_SECONDS",
+    )
 
     vertex_project_id: str | None = Field(
         default=None,

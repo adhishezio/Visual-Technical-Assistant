@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import logging
+import time
 from typing import Any, TypeVar
 
 from pydantic import BaseModel
@@ -8,6 +10,7 @@ from pydantic import BaseModel
 from backend.core.config import Settings, get_settings
 
 ModelT = TypeVar("ModelT", bound=BaseModel)
+logger = logging.getLogger(__name__)
 
 
 class GeminiServiceError(RuntimeError):
@@ -61,20 +64,38 @@ def generate_structured_content(
             raise GeminiServiceError("mime_type is required when image_bytes are provided.")
         contents.append(types.Part.from_bytes(data=image_bytes, mime_type=mime_type))
 
-    try:
-        response = client.models.generate_content(
-            model=resolved_settings.gemini_model,
-            contents=contents,
-            config=types.GenerateContentConfig(
-                temperature=0,
-                response_mime_type="application/json",
-                response_json_schema=_with_property_ordering(
-                    response_schema.model_json_schema()
+    last_error: Exception | None = None
+    for attempt in range(1, resolved_settings.gemini_max_retries + 1):
+        try:
+            response = client.models.generate_content(
+                model=resolved_settings.gemini_model,
+                contents=contents,
+                config=types.GenerateContentConfig(
+                    temperature=0,
+                    response_mime_type="application/json",
+                    response_json_schema=_with_property_ordering(
+                        response_schema.model_json_schema()
+                    ),
                 ),
-            ),
-        )
-    except Exception as exc:
-        raise GeminiServiceError("Gemini request failed.") from exc
+            )
+            break
+        except Exception as exc:
+            last_error = exc
+            logger.warning(
+                "Gemini request attempt %s/%s failed: %s",
+                attempt,
+                resolved_settings.gemini_max_retries,
+                exc,
+            )
+            if attempt >= resolved_settings.gemini_max_retries:
+                raise GeminiServiceError(
+                    f"Gemini request failed after {resolved_settings.gemini_max_retries} attempts."
+                ) from exc
+            time.sleep(
+                resolved_settings.gemini_retry_backoff_seconds * attempt
+            )
+    else:
+        raise GeminiServiceError("Gemini request failed.") from last_error
 
     parsed = getattr(response, "parsed", None)
     try:
