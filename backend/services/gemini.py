@@ -5,7 +5,7 @@ from typing import Any, TypeVar
 
 from pydantic import BaseModel
 
-from backend.core.config import Environment, Settings, get_settings
+from backend.core.config import Settings, get_settings
 
 ModelT = TypeVar("ModelT", bound=BaseModel)
 
