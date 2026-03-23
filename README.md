@@ -197,7 +197,7 @@ curl -X POST http://localhost:8000/query \
 | `PART_NUMBER_CONFIDENCE_THRESHOLD` | No | `0.75` | Part-number threshold before OCR fallback |
 | `GOOGLE_CLOUD_PROJECT` | Yes | `your-gemini-project-id` | Project for Gemini and general Google services |
 | `GOOGLE_CLOUD_LOCATION` | No | `us-central1` | Region for Gemini and general Google services |
-| `CORS_ALLOW_ORIGINS` | No | `http://localhost:3000,http://127.0.0.1:3000` | Browser origins allowed to call the FastAPI backend |
+| `CORS_ALLOW_ORIGINS` | No | `["http://localhost:3000","http://127.0.0.1:3000"]` | Browser origins allowed to call the FastAPI backend |
 | `GOOGLE_API_KEY` | Yes | `your-google-api-key` | Gemini API key |
 | `GEMINI_MODEL` | Yes | `gemini-2.5-flash` | Configured Gemini Flash model |
 | `VERTEX_PROJECT_ID` | Required for Vertex embeddings or Vector Search | `your-vertex-project-id` | Billing project for Vertex AI |
