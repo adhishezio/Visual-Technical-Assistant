@@ -23,16 +23,6 @@ def build_gemini_client(settings: Settings | None = None) -> Any:
     except ImportError as exc:
         raise GeminiServiceError("google-genai is required to call Gemini.") from exc
 
-    if (
-        resolved_settings.environment is Environment.PRODUCTION
-        and resolved_settings.google_cloud_project
-    ):
-        return genai.Client(
-            vertexai=True,
-            project=resolved_settings.google_cloud_project,
-            location=resolved_settings.google_cloud_location,
-        )
-
     if resolved_settings.google_api_key:
         return genai.Client(api_key=resolved_settings.google_api_key)
 

@@ -143,7 +143,7 @@ jobs:
             --max-instances=3 \
             --concurrency=80 \
             --timeout=60 \
-            --set-env-vars="VECTOR_STORE=chroma,OCR_PROVIDER=none,GOOGLE_CLOUD_PROJECT=gen-lang-client-0680686270,GOOGLE_CLOUD_LOCATION=us-central1,VERTEX_PROJECT_ID=jobhunt-490400,VERTEX_AI_LOCATION=us-central1,FIRESTORE_PROJECT_ID=jobhunt-490400,FIRESTORE_COLLECTION=component_chunks" \
+            --set-env-vars="VECTOR_STORE=chroma,OCR_PROVIDER=none,GEMINI_MODEL=gemini-2.5-flash,GOOGLE_CLOUD_PROJECT=gen-lang-client-0680686270,GOOGLE_CLOUD_LOCATION=us-central1,VERTEX_PROJECT_ID=jobhunt-490400,VERTEX_AI_LOCATION=us-central1,FIRESTORE_PROJECT_ID=jobhunt-490400,FIRESTORE_COLLECTION=component_chunks" \
             --update-secrets="GOOGLE_API_KEY=GOOGLE_API_KEY:latest,TAVILY_API_KEY=TAVILY_API_KEY:latest"
 
       - name: Output Service URL

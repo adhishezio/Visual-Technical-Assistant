@@ -89,7 +89,7 @@ def test_build_gemini_client_prefers_api_key_for_local_runs(monkeypatch, test_se
 
 
 
-def test_build_gemini_client_uses_vertex_in_production(monkeypatch, test_settings) -> None:
+def test_build_gemini_client_prefers_api_key_even_in_production(monkeypatch, test_settings) -> None:
     import google.genai
 
     recorded: list[dict[str, object]] = []
@@ -102,7 +102,6 @@ def test_build_gemini_client_uses_vertex_in_production(monkeypatch, test_setting
 
     settings = test_settings.model_copy(
         update={
-            "environment": Environment.PRODUCTION,
             "google_cloud_project": "demo-project",
             "google_cloud_location": "us-central1",
             "google_api_key": "demo-key",
@@ -111,11 +110,5 @@ def test_build_gemini_client_uses_vertex_in_production(monkeypatch, test_setting
 
     build_gemini_client(settings)
 
-    assert recorded == [
-        {
-            "vertexai": True,
-            "project": "demo-project",
-            "location": "us-central1",
-        }
-    ]
+    assert recorded == [{"api_key": "demo-key"}]
 
