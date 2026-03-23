@@ -48,7 +48,7 @@ jobs:
           python -m pip install mypy pytest
 
       - name: Run mypy
-        run: mypy backend tests
+        run: mypy --explicit-package-bases backend tests
 
   test:
     runs-on: ubuntu-latest
