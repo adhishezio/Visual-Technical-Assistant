@@ -5,9 +5,10 @@ from typing import cast
 from unittest.mock import patch
 
 from backend.agent.graph import VisualTechnicalAssistantAgent
-from backend.agent.nodes import GeneratedAnswer, TechnicalAssistantNodes
+from backend.agent.nodes import GeneratedAnswer, TechnicalAssistantNodes, build_safe_answer
 from backend.agent.state import AgentState
 from backend.core.models import (
+    AnswerWithCitations,
     CacheKey,
     ComponentIdentification,
     DocumentChunk,
@@ -101,6 +102,33 @@ class FakeVectorStore:
         return True
 
 
+def build_retrieved_chunk() -> RetrievedChunk:
+    cache_key = CacheKey.from_parts("ABB", "S 204 M B 40 UC", "2CD274061R0405")
+    metadata = DocumentMetadata(
+        source_url="https://example.com/specs.pdf",
+        source_title="ABB breaker specs",
+        manufacturer="ABB",
+        model_number="S 204 M B 40 UC",
+        part_number="2CD274061R0405",
+        document_type=DocumentType.DATASHEET,
+        revision=None,
+        page_map={0: 1},
+        retrieved_at=datetime(2026, 3, 23, 12, 0, tzinfo=timezone.utc),
+        content_hash="xyz789",
+        cache_key=cache_key,
+    )
+    return RetrievedChunk(
+        chunk=DocumentChunk(
+            chunk_text="Rated current 40A. Rated insulation voltage 440V.",
+            chunk_index=0,
+            metadata=metadata,
+            page_number=1,
+            section_title="Electrical data",
+        ),
+        similarity_score=0.94,
+    )
+
+
 def test_prime_cache_skips_bad_candidate_and_ingests_next_result(test_settings) -> None:
     fetcher = FakeFetcher()
     vector_store = FakeVectorStore()
@@ -181,30 +209,7 @@ def test_prime_cache_skips_search_when_component_is_already_cached(test_settings
 def test_generate_answer_falls_back_to_extractive_when_llm_returns_no_citations(
     test_settings,
 ) -> None:
-    cache_key = CacheKey.from_parts("ABB", "S 204 M B 40 UC", "2CD274061R0405")
-    metadata = DocumentMetadata(
-        source_url="https://example.com/specs.pdf",
-        source_title="ABB breaker specs",
-        manufacturer="ABB",
-        model_number="S 204 M B 40 UC",
-        part_number="2CD274061R0405",
-        document_type=DocumentType.DATASHEET,
-        revision=None,
-        page_map={0: 1},
-        retrieved_at=datetime(2026, 3, 23, 12, 0, tzinfo=timezone.utc),
-        content_hash="xyz789",
-        cache_key=cache_key,
-    )
-    retrieved_chunk = RetrievedChunk(
-        chunk=DocumentChunk(
-            chunk_text="Rated current 40A. Rated insulation voltage 440V.",
-            chunk_index=0,
-            metadata=metadata,
-            page_number=1,
-            section_title="Electrical data",
-        ),
-        similarity_score=0.94,
-    )
+    retrieved_chunk = build_retrieved_chunk()
     nodes = TechnicalAssistantNodes(
         settings=test_settings,
         search_service=cast(DocumentationSearchService, FakeSearchService()),
@@ -217,6 +222,7 @@ def test_generate_answer_falls_back_to_extractive_when_llm_returns_no_citations(
         "question": "What is the rated current for this component?",
         "identification": None,
         "reused_identification": False,
+        "answer_from_identification": False,
         "retrieved_chunks": [retrieved_chunk],
         "documentation_candidates": [],
         "fetch_attempts": 0,
@@ -236,3 +242,95 @@ def test_generate_answer_falls_back_to_extractive_when_llm_returns_no_citations(
     assert answer is not None
     assert answer.has_citations is True
     assert "40A" in answer.answer_text
+
+
+def test_generate_answer_uses_identification_fast_path_for_model_questions(
+    test_settings,
+) -> None:
+    nodes = TechnicalAssistantNodes(
+        settings=test_settings,
+        search_service=cast(DocumentationSearchService, FakeSearchService()),
+        fetcher=cast(DocumentFetcher, FakeFetcher()),
+        vector_store=cast(VectorStore, FakeVectorStore()),
+    )
+    identification = ComponentIdentification(
+        manufacturer="ABB",
+        model_number="S202",
+        part_number="2CDS252001R0404",
+        component_type="Miniature circuit breaker",
+        confidence_score=0.86,
+        raw_ocr_text="ABB S202 2CDS252001R0404",
+        should_attempt_document_lookup=False,
+    )
+    state: AgentState = {
+        "image_bytes": b"",
+        "mime_type": "image/jpeg",
+        "question": "What is the model number?",
+        "identification": identification,
+        "reused_identification": True,
+        "answer_from_identification": False,
+        "retrieved_chunks": [],
+        "documentation_candidates": [],
+        "fetch_attempts": 0,
+    }
+
+    result = nodes.generate_answer(state)
+
+    answer = result["answer"]
+    assert answer is not None
+    assert answer.has_citations is False
+    assert "model number appears to be S202" in answer.answer_text
+    assert result["answer_from_identification"] is True
+
+
+def test_validate_citations_preserves_identification_fast_path_answer(
+    test_settings,
+) -> None:
+    nodes = TechnicalAssistantNodes(
+        settings=test_settings,
+        search_service=cast(DocumentationSearchService, FakeSearchService()),
+        fetcher=cast(DocumentFetcher, FakeFetcher()),
+        vector_store=cast(VectorStore, FakeVectorStore()),
+    )
+    uncited_answer = AnswerWithCitations(
+        answer_text="From the image identification, the manufacturer appears to be ABB.",
+        citations=[],
+        confidence=0.78,
+    )
+    state: AgentState = {
+        "answer": uncited_answer,
+        "answer_from_identification": True,
+    }
+
+    result = nodes.validate_citations(state)
+
+    validated = result["answer"]
+    assert validated is not None
+    assert validated.answer_text == uncited_answer.answer_text
+    assert validated.has_citations is False
+
+
+def test_validate_citations_rejects_uncited_non_identification_answers(
+    test_settings,
+) -> None:
+    nodes = TechnicalAssistantNodes(
+        settings=test_settings,
+        search_service=cast(DocumentationSearchService, FakeSearchService()),
+        fetcher=cast(DocumentFetcher, FakeFetcher()),
+        vector_store=cast(VectorStore, FakeVectorStore()),
+    )
+    state: AgentState = {
+        "answer": AnswerWithCitations(
+            answer_text="Unsupported uncited answer",
+            citations=[],
+            confidence=0.66,
+        ),
+        "answer_from_identification": False,
+    }
+
+    result = nodes.validate_citations(state)
+
+    validated = result["answer"]
+    assert validated is not None
+    assert validated.answer_text == build_safe_answer().answer_text
+    assert validated.has_citations is False

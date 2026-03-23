@@ -9,6 +9,7 @@ from fastapi.concurrency import run_in_threadpool
 from backend.agent.graph import VisualTechnicalAssistantAgent
 from backend.agent.nodes import build_safe_answer, enforce_cited_answer
 from backend.core.models import AnswerWithCitations, ComponentIdentification
+from backend.services.history import QueryHistoryService
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -23,12 +24,18 @@ def get_agent_runner() -> VisualTechnicalAssistantAgent | None:
         return None
 
 
+@lru_cache(maxsize=1)
+def get_history_service() -> QueryHistoryService:
+    return QueryHistoryService()
+
+
 @router.post("", response_model=AnswerWithCitations)
 async def query_component(
     image: UploadFile = File(...),
     question: str = Form(...),
     identification: str | None = Form(default=None),
     agent: VisualTechnicalAssistantAgent | None = Depends(get_agent_runner),
+    history_service: QueryHistoryService = Depends(get_history_service),
 ) -> AnswerWithCitations:
     if agent is None:
         return build_safe_answer()
@@ -43,15 +50,50 @@ async def query_component(
         except Exception:
             logger.exception("[query_route] invalid_identification_payload")
 
+    final_identification = parsed_identification
+    answer = build_safe_answer()
+    answer_from_identification = False
+
     try:
-        answer = await run_in_threadpool(
-            agent.run,
-            image_bytes,
-            question,
-            image.content_type or "image/jpeg",
-            parsed_identification,
-        )
+        if hasattr(agent, "run_detailed"):
+            final_state = await run_in_threadpool(
+                agent.run_detailed,
+                image_bytes,
+                question,
+                image.content_type or "image/jpeg",
+                parsed_identification,
+            )
+            if isinstance(final_state, dict):
+                answer = final_state.get("answer") or build_safe_answer()
+                final_identification = (
+                    final_state.get("identification") or parsed_identification
+                )
+                answer_from_identification = bool(
+                    final_state.get("answer_from_identification")
+                )
+        else:
+            answer = await run_in_threadpool(
+                agent.run,
+                image_bytes,
+                question,
+                image.content_type or "image/jpeg",
+                parsed_identification,
+            )
     except Exception:
         logger.exception("[query_route] agent_run_failed")
         return build_safe_answer()
-    return enforce_cited_answer(answer)
+
+    if not answer.has_citations and not answer_from_identification:
+        answer = enforce_cited_answer(answer)
+
+    try:
+        await run_in_threadpool(
+            history_service.record_answer,
+            final_identification,
+            question,
+            answer,
+        )
+    except Exception:
+        logger.exception("[query_route] history_log_failed")
+
+    return answer

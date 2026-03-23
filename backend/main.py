@@ -6,6 +6,7 @@ from functools import lru_cache
 from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from backend.api.routes.history import router as history_router
 from backend.api.routes.identify import router as identify_router
 from backend.api.routes.query import router as query_router
 from backend.core.config import get_settings
@@ -32,6 +33,7 @@ app.add_middleware(
 )
 app.include_router(identify_router, prefix="/identify", tags=["identify"])
 app.include_router(query_router, prefix="/query", tags=["query"])
+app.include_router(history_router, prefix="/history", tags=["history"])
 
 
 @lru_cache(maxsize=1)
@@ -54,6 +56,7 @@ async def service_index() -> ServiceIndex:
         health_url="/health",
         identify_endpoint="/identify",
         query_endpoint="/query",
+        history_endpoint="/history",
     )
 
 

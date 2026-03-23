@@ -100,6 +100,7 @@ class ComponentIdentification(BaseModel):
     model_number: str | None = None
     part_number: str | None = None
     component_type: str | None = None
+    component_serial: str | None = None
     confidence_score: float = Field(default=0.0, ge=0.0, le=1.0)
     fallback_tier: FallbackTier = FallbackTier.VISION_ONLY
     raw_ocr_text: str = ""
@@ -109,8 +110,28 @@ class ComponentIdentification(BaseModel):
     requires_manual_input: bool = False
     error_details: str | None = None
 
+    @model_validator(mode="after")
+    def populate_component_serial(self) -> "ComponentIdentification":
+        if self.component_serial:
+            return self
+        self.component_serial = self.build_component_serial()
+        return self
+
     def to_cache_key(self) -> CacheKey:
         return CacheKey.from_identification(self)
+
+    def build_component_serial(self) -> str | None:
+        values = [self.manufacturer, self.model_number, self.part_number]
+        if not any(values):
+            return None
+        parts: list[str] = []
+        for value in values:
+            if not value:
+                continue
+            normalized = re.sub(r"[^A-Z0-9]+", "_", value.upper()).strip("_")
+            if normalized and normalized not in parts:
+                parts.append(normalized)
+        return "_".join(parts) or None
 
 
 class DocumentType(str, Enum):
@@ -167,6 +188,25 @@ class AnswerWithCitations(BaseModel):
         return self
 
 
+class QueryLogSource(str, Enum):
+    WEB = "web"
+    PRIVATE_DOC = "private_doc"
+    CACHE = "cache"
+
+
+class QueryLogEntry(BaseModel):
+    id: str | None = None
+    tenant_id: str
+    component_serial: str
+    component_model: str
+    question: str
+    answer: str
+    source: QueryLogSource
+    confidence: int = Field(ge=0, le=100)
+    timestamp: datetime
+    doc_source: str | None = None
+
+
 class VisionExtraction(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -193,3 +233,7 @@ class ServiceIndex(BaseModel):
     health_url: str
     identify_endpoint: str
     query_endpoint: str
+    history_endpoint: str
+
+
+

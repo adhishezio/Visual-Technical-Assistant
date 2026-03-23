@@ -333,11 +333,24 @@ class TechnicalAssistantNodes:
         }
 
     def generate_answer(self, state: AgentState) -> AgentState:
+        identification = state.get("identification")
+        identification_answer = self._build_identification_answer(
+            state["question"],
+            identification,
+        )
         retrieved_chunks = state.get("retrieved_chunks", [])
         if not retrieved_chunks:
+            if identification_answer is not None:
+                logger.info("[generate] mode=identification_fast has_citations=%s", identification_answer.has_citations)
+                return {
+                    "answer": identification_answer,
+                    "answer_from_identification": True,
+                    "current_node": "generate_answer",
+                }
             logger.info("[generate] chunks=0 has_citations=False")
             return {
                 "answer": build_safe_answer(),
+                "answer_from_identification": False,
                 "current_node": "generate_answer",
             }
 
@@ -353,6 +366,7 @@ class TechnicalAssistantNodes:
             )
             return {
                 "answer": extractive_answer,
+                "answer_from_identification": False,
                 "current_node": "generate_answer",
             }
 
@@ -366,6 +380,17 @@ class TechnicalAssistantNodes:
                 settings=self.settings,
             )
         except GeminiServiceError:
+            if identification_answer is not None:
+                logger.info(
+                    "[generate] mode=identification_fallback has_citations=%s error=%r",
+                    identification_answer.has_citations,
+                    "generation failed",
+                )
+                return {
+                    "answer": identification_answer,
+                    "answer_from_identification": True,
+                    "current_node": "generate_answer",
+                }
             fallback_answer = self._build_extractive_answer(
                 state["question"],
                 retrieved_chunks,
@@ -378,6 +403,7 @@ class TechnicalAssistantNodes:
             )
             return {
                 "answer": fallback_answer,
+                "answer_from_identification": False,
                 "current_node": "generate_answer",
             }
 
@@ -391,16 +417,28 @@ class TechnicalAssistantNodes:
             citations=citations,
             confidence=generated.confidence,
         )
-        if not answer.has_citations and extractive_answer.has_citations:
-            logger.info(
-                "[generate] chunks=%s mode=extractive_fallback has_citations=%s",
-                len(retrieved_chunks),
-                extractive_answer.has_citations,
-            )
-            return {
-                "answer": extractive_answer,
-                "current_node": "generate_answer",
-            }
+        if not answer.has_citations:
+            if identification_answer is not None:
+                logger.info(
+                    "[generate] mode=identification_fallback has_citations=%s",
+                    identification_answer.has_citations,
+                )
+                return {
+                    "answer": identification_answer,
+                    "answer_from_identification": True,
+                    "current_node": "generate_answer",
+                }
+            if extractive_answer.has_citations:
+                logger.info(
+                    "[generate] chunks=%s mode=extractive_fallback has_citations=%s",
+                    len(retrieved_chunks),
+                    extractive_answer.has_citations,
+                )
+                return {
+                    "answer": extractive_answer,
+                    "answer_from_identification": False,
+                    "current_node": "generate_answer",
+                }
         logger.info(
             "[generate] chunks=%s citation_indexes=%s has_citations=%s confidence=%.2f",
             len(retrieved_chunks),
@@ -410,10 +448,23 @@ class TechnicalAssistantNodes:
         )
         return {
             "answer": answer,
+            "answer_from_identification": False,
             "current_node": "generate_answer",
         }
 
     def validate_citations(self, state: AgentState) -> AgentState:
+        if state.get("answer_from_identification"):
+            answer = state.get("answer") or build_safe_answer()
+            logger.info(
+                "[validate] mode=identification_fast has_citations=%s confidence=%.2f",
+                answer.has_citations,
+                answer.confidence,
+            )
+            return {
+                "answer": answer,
+                "current_node": "validate_citations",
+            }
+
         validated = enforce_cited_answer(state.get("answer"))
         logger.info(
             "[validate] has_citations=%s confidence=%.2f",
@@ -518,6 +569,80 @@ class TechnicalAssistantNodes:
             identification.component_type or "",
         ]
         return " ".join(token for token in tokens if token).strip()
+
+    @staticmethod
+    def _build_identification_answer(
+        question: str,
+        identification: ComponentIdentification | None,
+    ) -> AnswerWithCitations | None:
+        if identification is None:
+            return None
+
+        question_lower = question.lower()
+        confidence = max(0.35, identification.confidence_score)
+
+        if any(token in question_lower for token in ["part number", "catalog number", "article number", "mlfb"]):
+            value = identification.part_number or identification.model_number
+            if value:
+                qualifier = "part number"
+                if not identification.part_number and identification.model_number:
+                    qualifier = "model number"
+                return AnswerWithCitations(
+                    answer_text=(
+                        f"From the image identification, the {qualifier} appears to be {value}. "
+                        "Official documentation was not available for a cited answer, so this response is based on the label/image only."
+                    ),
+                    citations=[],
+                    confidence=confidence,
+                )
+
+        if any(token in question_lower for token in ["model number", "model"]):
+            if identification.model_number:
+                return AnswerWithCitations(
+                    answer_text=(
+                        f"From the image identification, the model number appears to be {identification.model_number}. "
+                        "Official documentation was not available for a cited answer, so this response is based on the label/image only."
+                    ),
+                    citations=[],
+                    confidence=confidence,
+                )
+
+        if any(token in question_lower for token in ["manufacturer", "brand", "vendor", "make"]):
+            if identification.manufacturer:
+                return AnswerWithCitations(
+                    answer_text=(
+                        f"From the image identification, the manufacturer appears to be {identification.manufacturer}. "
+                        "Official documentation was not available for a cited answer, so this response is based on the label/image only."
+                    ),
+                    citations=[],
+                    confidence=confidence,
+                )
+
+        type_prompts = [
+            "what is this",
+            "what component",
+            "component type",
+            "device type",
+            "what kind of",
+        ]
+        if any(token in question_lower for token in type_prompts):
+            description_parts = [
+                identification.component_type,
+                f"from {identification.manufacturer}" if identification.manufacturer else None,
+                f"model {identification.model_number}" if identification.model_number else None,
+            ]
+            summary = " ".join(part for part in description_parts if part)
+            if summary:
+                return AnswerWithCitations(
+                    answer_text=(
+                        f"From the image identification, this appears to be a {summary}. "
+                        "Official documentation was not available for a cited answer, so this response is based on the image identification only."
+                    ),
+                    citations=[],
+                    confidence=confidence,
+                )
+
+        return None
 
     @staticmethod
     def _build_extractive_answer(
@@ -683,3 +808,8 @@ def _extract_electrical_answer(chunk_text: str, question: str) -> str | None:
             if cleaned:
                 return f"{cleaned}."
     return None
+
+
+
+
+

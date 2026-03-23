@@ -148,6 +148,15 @@ class Settings(BaseSettings):
         default=None,
         alias="FIRESTORE_PROJECT_ID",
     )
+    query_log_collection: str = Field(
+        default="query_log",
+        alias="QUERY_LOG_COLLECTION",
+    )
+    default_tenant_id: str = Field(
+        default="public_demo",
+        alias="DEFAULT_TENANT_ID",
+    )
+    component_history_limit: int = Field(default=10, alias="COMPONENT_HISTORY_LIMIT")
 
     trocr_model: str = Field(
         default="microsoft/trocr-large-printed",
@@ -225,3 +234,4 @@ class Settings(BaseSettings):
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:
     return Settings()
+

@@ -42,18 +42,36 @@ class VisualTechnicalAssistantAgent:
         mime_type: str = "image/jpeg",
         identification=None,
     ) -> AnswerWithCitations:
+        final_state = self.run_detailed(
+            image_bytes=image_bytes,
+            question=question,
+            mime_type=mime_type,
+            identification=identification,
+        )
+        return final_state.get("answer") or build_safe_answer()
+
+    def run_detailed(
+        self,
+        image_bytes: bytes,
+        question: str,
+        mime_type: str = "image/jpeg",
+        identification=None,
+    ) -> AgentState:
         initial_state: AgentState = {
             "image_bytes": image_bytes,
             "mime_type": mime_type,
             "question": question,
             "identification": identification,
             "reused_identification": identification is not None,
+            "answer_from_identification": False,
             "retrieved_chunks": [],
             "documentation_candidates": [],
             "fetch_attempts": 0,
         }
         final_state = self.graph.invoke(initial_state)
-        return final_state.get("answer") or build_safe_answer()
+        if not final_state.get("answer"):
+            final_state["answer"] = build_safe_answer()
+        return final_state
 
     def prime_cache(self, identification: ComponentIdentification) -> bool:
         if not identification.should_attempt_document_lookup:
@@ -135,3 +153,5 @@ def build_graph(nodes: TechnicalAssistantNodes):
     graph.add_edge("generate_answer", "validate_citations")
     graph.add_edge("validate_citations", END)
     return graph.compile()
+
+

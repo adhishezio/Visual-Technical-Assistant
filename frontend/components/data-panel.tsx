@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 import {
   AlertTriangle,
+  Clock3,
   FileText,
   Gauge,
   Send,
@@ -17,7 +18,7 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from '@/components/ui/collapsible'
-import type { ComponentIdentification } from '@/lib/api'
+import type { ComponentIdentification, QueryLogEntry } from '@/lib/api'
 import type { StageState } from './camera-stage'
 
 export interface SourceCitation {
@@ -62,6 +63,8 @@ interface DataPanelProps {
   state: StageState
   identification: ComponentIdentification | null
   messages: ChatMessage[]
+  historyEntries: QueryLogEntry[]
+  historyLoading: boolean
   isQuerying: boolean
   errorMessage: string | null
   onAskQuestion: (question: string) => Promise<void>
@@ -71,11 +74,14 @@ export function DataPanel({
   state,
   identification,
   messages,
+  historyEntries,
+  historyLoading,
   isQuerying,
   errorMessage,
   onAskQuestion,
 }: DataPanelProps) {
   const [detailsOpen, setDetailsOpen] = useState(true)
+  const [historyOpen, setHistoryOpen] = useState(false)
   const [inputValue, setInputValue] = useState('')
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
@@ -139,7 +145,7 @@ export function DataPanel({
             <p className="mt-2 break-words text-sm leading-6 text-slate-600">
               {identification?.manufacturer || 'Unknown manufacturer'}
               {identification?.component_type
-                ? ` · ${identification.component_type}`
+                ? ` | ${identification.component_type}`
                 : ''}
             </p>
           </div>
@@ -234,6 +240,64 @@ export function DataPanel({
             </CollapsibleContent>
           </Collapsible>
 
+          <Collapsible open={historyOpen} onOpenChange={setHistoryOpen}>
+            <CollapsibleTrigger asChild>
+              <button
+                type="button"
+                className="mt-4 flex w-full items-center justify-between rounded-2xl border border-slate-200 bg-slate-50/80 px-4 py-3 text-left transition-colors hover:border-slate-300 hover:bg-white"
+              >
+                <div className="min-w-0">
+                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                    Maintenance history
+                  </p>
+                  <p className="mt-1 break-words text-sm text-slate-600">
+                    {buildHistorySummary(historyEntries, historyLoading)}
+                  </p>
+                </div>
+                <span className="inline-flex items-center gap-2 text-sm font-medium text-slate-600">
+                  <Clock3 className="size-4" />
+                  {historyOpen ? 'Hide' : 'Show'}
+                </span>
+              </button>
+            </CollapsibleTrigger>
+            <CollapsibleContent className="mt-3">
+              <div className="space-y-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
+                {historyLoading ? (
+                  <p className="text-sm text-slate-500">
+                    Loading previous questions for this component...
+                  </p>
+                ) : historyEntries.length > 0 ? (
+                  historyEntries.map((entry) => (
+                    <div
+                      key={entry.id ?? `${entry.timestamp}-${entry.question}`}
+                      className="rounded-2xl border border-slate-200 bg-slate-50/70 px-4 py-3"
+                    >
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <p className="text-sm font-semibold text-slate-900">
+                          {entry.question}
+                        </p>
+                        <span className="text-xs uppercase tracking-[0.16em] text-slate-500">
+                          {formatHistoryTimestamp(entry.timestamp)}
+                        </span>
+                      </div>
+                      <p className="mt-2 text-sm leading-6 text-slate-600">
+                        {entry.answer}
+                      </p>
+                      <p className="mt-2 text-[11px] uppercase tracking-[0.18em] text-slate-500">
+                        {entry.source}
+                        {entry.doc_source ? ` | ${entry.doc_source}` : ''}
+                      </p>
+                    </div>
+                  ))
+                ) : (
+                  <p className="text-sm text-slate-500">
+                    No component-specific maintenance history yet for this scan.
+                  </p>
+                )}
+              </div>
+            </CollapsibleContent>
+          </Collapsible>
+
           <div className="mt-4 flex flex-wrap gap-2">
             {quickActions.map((action) => (
               <button
@@ -300,7 +364,8 @@ export function DataPanel({
                   </div>
                 </div>
                 <p className="text-xs uppercase tracking-[0.18em] text-slate-500">
-                  The assistant will refuse uncited answers.
+                  The assistant will refuse uncited answers unless the reply is
+                  explicitly grounded in image identification only.
                 </p>
               </form>
             </div>
@@ -337,6 +402,10 @@ function buildSpecs(
       value: identification.part_number || 'Not extracted',
     },
     {
+      label: 'Component serial',
+      value: identification.component_serial || 'Not available',
+    },
+    {
       label: 'Lookup strategy',
       value: identification.should_attempt_document_lookup
         ? 'Background cache warm-up enabled'
@@ -351,6 +420,43 @@ function buildSpecs(
       value: identification.raw_ocr_text || 'No OCR text found',
     },
   ]
+}
+
+function buildHistorySummary(entries: QueryLogEntry[], isLoading: boolean): string {
+  if (isLoading) {
+    return 'Loading previous questions for this component.'
+  }
+  if (entries.length === 0) {
+    return 'No prior maintenance history recorded for this component yet.'
+  }
+  return `${entries[0].component_model} - last queried ${formatRelativeTimestamp(entries[0].timestamp)}`
+}
+
+function formatHistoryTimestamp(value: string): string {
+  return new Intl.DateTimeFormat('en', {
+    month: 'short',
+    day: 'numeric',
+  }).format(new Date(value))
+}
+
+function formatRelativeTimestamp(value: string): string {
+  const date = new Date(value)
+  const diffMs = Date.now() - date.getTime()
+  const day = 24 * 60 * 60 * 1000
+
+  if (diffMs < day) {
+    return 'today'
+  }
+  if (diffMs < day * 2) {
+    return 'yesterday'
+  }
+  if (diffMs < day * 30) {
+    return `${Math.max(1, Math.floor(diffMs / day))} days ago`
+  }
+  if (diffMs < day * 365) {
+    return `${Math.max(1, Math.floor(diffMs / (day * 30)))} months ago`
+  }
+  return `${Math.max(1, Math.floor(diffMs / (day * 365)))} years ago`
 }
 
 function StatusPill({

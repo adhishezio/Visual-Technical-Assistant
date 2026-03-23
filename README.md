@@ -2,11 +2,11 @@
 
 Production-grade AI system for identifying industrial and electronic components from an image and answering technical questions with citations from official documentation retrieved on demand.
 
-[![Live Demo](https://img.shields.io/badge/live-demo-Vercel-000000?logo=vercel&logoColor=white)](https://frontend-two-beta-rpjynziimi.vercel.app)
+[![Live Demo](https://img.shields.io/badge/live%20demo-Vercel-000000?logo=vercel&logoColor=white)](https://frontend-two-beta-rpjynziimi.vercel.app)
 ![Python 3.11](https://img.shields.io/badge/Python-3.11-3776AB?logo=python&logoColor=white)
 ![FastAPI](https://img.shields.io/badge/FastAPI-API-009688?logo=fastapi&logoColor=white)
 ![Docker](https://img.shields.io/badge/Docker-containerized-2496ED?logo=docker&logoColor=white)
-![GCP](https://img.shields.io/badge/GCP-Cloud%20Run%20%2B%20Vertex%20AI-4285F4?logo=googlecloud&logoColor=white)
+![GCP](https://img.shields.io/badge/GCP-Cloud%20Run%20and%20Vertex%20AI-4285F4?logo=googlecloud&logoColor=white)
 ![License Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-D22128)
 
 ## Architecture
@@ -29,35 +29,38 @@ flowchart LR
 ## How It Works
 
 1. The user uploads or captures a photo of an industrial or electronic component.
-2. Gemini Flash performs visual identification and structured extraction of manufacturer, model, part number, and component type.
+2. Gemini Flash performs visual identification and extracts structured manufacturer, model, part number, and component type data.
 3. If Gemini is uncertain about the part number, TrOCR runs as a focused OCR fallback.
 4. The system normalizes the result into a deterministic cache key: `manufacturer::model::part_number`.
 5. If the component is not already cached, Tavily searches for official documentation, then the system fetches, parses, chunks, embeds, and stores the source material.
 6. A LangGraph corrective RAG pipeline retrieves candidate chunks, grades their relevance, refines the search when needed, and retries retrieval.
-7. The answer node receives only retrieved chunks as context and returns an answer with source URL and page-level citations. Uncited answers are rejected.
+7. The answer node receives only retrieved chunks as context and returns an answer with source URL and page-level citations. Uncited answers are rejected unless the response is explicitly grounded in the image identification only.
+8. Each answered question can be written to Firestore query history so technicians can review prior maintenance questions for the same component.
 
 ## Tech Stack
 
 | Category | Tools |
 | --- | --- |
 | API | Python 3.11, FastAPI, Uvicorn |
-| Vision + OCR | Gemini Flash on Vertex AI for multimodal identification, TrOCR (`microsoft/trocr-large-printed`) as OCR fallback |
+| Vision + OCR | Gemini Flash for multimodal identification, TrOCR (`microsoft/trocr-large-printed`) as OCR fallback |
 | Retrieval | LangGraph corrective RAG pipeline, LangChain document tooling |
 | Search + Fetch | Tavily Search API, Trafilatura, PyPDF |
 | Embeddings | Vertex AI `text-embedding-005` with `RETRIEVAL_DOCUMENT` and `RETRIEVAL_QUERY` task types |
-| Vector Stores | ChromaDB for local/dev, Vertex AI Vector Search for production behind a shared abstraction |
-| Metadata Persistence | Google Firestore |
+| Vector Stores | ChromaDB for local and current production, Vertex AI Vector Search behind a shared abstraction for later rollout |
+| Metadata Persistence | Google Firestore for chunk metadata and per-component query history |
 | Infrastructure | Docker, GitHub Actions CI/CD, Google Artifact Registry, Google Cloud Run |
 | Authentication | Workload Identity Federation for keyless GitHub to GCP authentication |
 
 ## Key Design Decisions
 
-- Citation enforcement is architectural, not prompt-only. The answer generation node only receives retrieved chunks, and uncited answers are replaced with a safe fallback.
+- Citation enforcement is architectural, not prompt-only. The answer generation node only receives retrieved chunks, and uncited documentation answers are replaced with a safe fallback.
 - Identification is anchored on OCR and part-number extraction. Visual recognition supports the process, but the normalized part number is the primary cache key.
 - The cache is keyed by `manufacturer::model::part_number`, not by image, which makes retrieval deterministic and reusable across users and sessions.
 - The vector store abstraction supports both ChromaDB and Vertex AI Vector Search through a single environment-variable switch.
 - Corrective RAG is built into the agent graph. Low-quality retrieval is graded, the query is refined, and retrieval is retried before answer generation.
 - The fallback chain is explicit: OCR match, partial OCR, visual-only identification, then manual-entry guidance.
+- Simple questions such as manufacturer, model number, or part number can be answered directly from the identification result when official documentation is unavailable, instead of degrading to a generic fallback.
+- Every answered question can be logged to Firestore query history, keyed by component serial so technicians can review prior maintenance questions for the same component.
 - Power-related answers are instructed to distinguish between the device input specification and the adapter or power-supply specification.
 
 ## CI/CD Pipeline
@@ -159,8 +162,9 @@ The Next.js UI will be available at `http://localhost:3000`.
 | --- | --- | --- | --- | --- |
 | `GET` | `/` | Service index for humans and simple uptime checks | None | JSON with service description and important URLs |
 | `GET` | `/health` | Health status and vector-store readiness | None | `{"status": "ok|degraded", "vector_store_healthy": bool}` |
-| `POST` | `/identify` | Vision/OCR identification only | `multipart/form-data` with `image` | `ComponentIdentification` |
-| `POST` | `/query` | Full identify → retrieve → answer pipeline | `multipart/form-data` with `image` and `question` | `AnswerWithCitations` |
+| `POST` | `/identify` | Vision and OCR identification only | `multipart/form-data` with `image` | `ComponentIdentification` |
+| `POST` | `/query` | Full identify -> retrieve -> answer pipeline | `multipart/form-data` with `image` and `question` | `AnswerWithCitations` |
+| `GET` | `/history` | Component-specific query history | Query params: `component_serial`, optional `tenant_id`, optional `limit` | `QueryLogEntry[]` |
 
 Example `curl` requests:
 
@@ -173,6 +177,10 @@ curl -X POST http://localhost:8000/identify \
 curl -X POST http://localhost:8000/query \
   -F "image=@test_images/s200-m-uc-range-product-image-large.jpg" \
   -F "question=What is the rated current?"
+```
+
+```bash
+curl "http://localhost:8000/history?component_serial=ABB_S202_2CDS252001R0404"
 ```
 
 ## Environment Variables
@@ -197,15 +205,20 @@ curl -X POST http://localhost:8000/query \
 | `PART_NUMBER_CONFIDENCE_THRESHOLD` | No | `0.75` | Part-number threshold before OCR fallback |
 | `GOOGLE_CLOUD_PROJECT` | Yes | `your-gemini-project-id` | Project for Gemini and general Google services |
 | `GOOGLE_CLOUD_LOCATION` | No | `us-central1` | Region for Gemini and general Google services |
-| `CORS_ALLOW_ORIGINS` | No | `["http://localhost:3000","http://127.0.0.1:3000"]` | Browser origins allowed to call the FastAPI backend |
+| `CORS_ALLOW_ORIGINS` | No | `http://localhost:3000,http://127.0.0.1:3000` | Browser origins allowed to call the FastAPI backend |
 | `GOOGLE_API_KEY` | Yes | `your-google-api-key` | Gemini API key |
 | `GEMINI_MODEL` | Yes | `gemini-2.5-flash` | Configured Gemini Flash model |
+| `GEMINI_MAX_RETRIES` | No | `3` | Retry count for transient Gemini request failures |
+| `GEMINI_RETRY_BACKOFF_SECONDS` | No | `1.0` | Base delay between Gemini retries |
 | `VERTEX_PROJECT_ID` | Required for Vertex embeddings or Vector Search | `your-vertex-project-id` | Billing project for Vertex AI |
 | `VERTEX_AI_LOCATION` | Required for Vertex embeddings or Vector Search | `us-central1` | Vertex AI region |
 | `VERTEX_INDEX_ENDPOINT_ID` | Required when `VECTOR_STORE=vertex` | `projects/.../indexEndpoints/...` | Vertex Vector Search endpoint |
 | `VERTEX_DEPLOYED_INDEX_ID` | Required when `VECTOR_STORE=vertex` | `component_docs_v1` | Deployed index identifier |
 | `FIRESTORE_COLLECTION` | Required when `VECTOR_STORE=vertex` | `component_chunks` | Firestore collection for chunk metadata |
-| `FIRESTORE_PROJECT_ID` | Required when `VECTOR_STORE=vertex` | `your-vertex-project-id` | Firestore project |
+| `FIRESTORE_PROJECT_ID` | Required for Firestore-backed features | `your-vertex-project-id` | Firestore project |
+| `QUERY_LOG_COLLECTION` | No | `query_log` | Firestore collection for per-component query history |
+| `DEFAULT_TENANT_ID` | No | `public_demo` | Default tenant written into query history entries |
+| `COMPONENT_HISTORY_LIMIT` | No | `10` | Default number of history entries returned per component |
 | `TROCR_MODEL` | No | `microsoft/trocr-large-printed` | OCR fallback model |
 | `TROCR_DEVICE` | No | empty | Optional TrOCR device override |
 | `TROCR_MAX_NEW_TOKENS` | No | `64` | TrOCR decode limit |
@@ -222,13 +235,13 @@ curl -X POST http://localhost:8000/query \
 
 ```text
 backend/
-  api/routes/          FastAPI endpoints (identify, query)
+  api/routes/          FastAPI endpoints (identify, query, history)
   agent/               LangGraph graph, nodes, state, prompts
   core/                Config and typed pipeline models
-  services/            Vision, search, fetch, and embed services
+  services/            Vision, search, fetch, embed, and history services
   vector_store/        Abstract base plus ChromaDB and Vertex AI implementations
 frontend/              Next.js UI generated from v0 and wired to the live API
-tests/                 22 unit tests with mocked provider integrations
+tests/                 50 unit tests with mocked provider integrations
 .github/workflows/     ci.yml with lint, typecheck, test, and deploy jobs
 Dockerfile
 docker-compose.yml

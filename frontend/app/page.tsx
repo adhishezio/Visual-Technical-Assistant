@@ -13,10 +13,12 @@ import {
   type SourceCitation,
 } from '@/components/data-panel'
 import {
+  getComponentHistory,
   identifyComponent,
   queryComponent,
   type AnswerWithCitations,
   type ComponentIdentification,
+  type QueryLogEntry,
 } from '@/lib/api'
 
 function revokeIfBlobUrl(url: string | null | undefined) {
@@ -131,6 +133,8 @@ export default function HomePage() {
   const [identification, setIdentification] =
     useState<ComponentIdentification | null>(null)
   const [messages, setMessages] = useState<ChatMessage[]>([])
+  const [historyEntries, setHistoryEntries] = useState<QueryLogEntry[]>([])
+  const [historyLoading, setHistoryLoading] = useState(false)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [isQuerying, setIsQuerying] = useState(false)
 
@@ -147,6 +151,8 @@ export default function HomePage() {
       setSelectedImage(null)
       setIdentification(null)
       setMessages([])
+      setHistoryEntries([])
+      setHistoryLoading(false)
       setErrorMessage(null)
       setIsQuerying(false)
     })
@@ -158,6 +164,8 @@ export default function HomePage() {
     setStageState('scanning')
     setIdentification(null)
     setMessages([])
+    setHistoryEntries([])
+    setHistoryLoading(false)
     setErrorMessage(null)
 
     try {
@@ -166,6 +174,22 @@ export default function HomePage() {
         setIdentification(result)
         setMessages([buildIdentificationMessage(result)])
       })
+
+      if (result.component_serial) {
+        setHistoryLoading(true)
+        try {
+          const history = await getComponentHistory(result.component_serial)
+          startTransition(() => {
+            setHistoryEntries(history)
+          })
+        } catch {
+          startTransition(() => {
+            setHistoryEntries([])
+          })
+        } finally {
+          setHistoryLoading(false)
+        }
+      }
     } catch (error) {
       setErrorMessage(getErrorMessage(error))
       setMessages([
@@ -204,6 +228,17 @@ export default function HomePage() {
         identification,
       )
       setMessages((current) => [...current, buildAnswerMessage(answer)])
+
+      if (identification?.component_serial) {
+        try {
+          const history = await getComponentHistory(identification.component_serial)
+          startTransition(() => {
+            setHistoryEntries(history)
+          })
+        } catch {
+          // Keep the previous history list if refresh fails.
+        }
+      }
     } catch (error) {
       const message = getErrorMessage(error)
       setErrorMessage(message)
@@ -241,6 +276,8 @@ export default function HomePage() {
             state={stageState}
             identification={identification}
             messages={messages}
+            historyEntries={historyEntries}
+            historyLoading={historyLoading}
             isQuerying={isQuerying}
             errorMessage={errorMessage}
             onAskQuestion={handleAskQuestion}

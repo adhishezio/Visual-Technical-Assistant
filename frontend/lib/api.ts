@@ -10,6 +10,7 @@ export interface ComponentIdentification {
   model_number?: string | null
   part_number?: string | null
   component_type?: string | null
+  component_serial?: string | null
   confidence_score: number
   fallback_tier: number
   raw_ocr_text: string
@@ -56,6 +57,19 @@ export interface AnswerWithCitations {
   has_citations: boolean
 }
 
+export interface QueryLogEntry {
+  id?: string | null
+  tenant_id: string
+  component_serial: string
+  component_model: string
+  question: string
+  answer: string
+  source: 'web' | 'private_doc' | 'cache'
+  confidence: number
+  timestamp: string
+  doc_source?: string | null
+}
+
 const DEFAULT_API_BASE_URL =
   'https://visual-tech-assistant-504255859107.us-central1.run.app'
 
@@ -84,10 +98,10 @@ async function parseJsonResponse<T>(response: Response): Promise<T> {
 
 export async function identifyComponent(imageFile: File): Promise<ComponentIdentification> {
   const formData = new FormData()
-  formData.append("image", imageFile)
+  formData.append('image', imageFile)
 
   const response = await fetch(`${getApiBaseUrl()}/identify`, {
-    method: "POST",
+    method: 'POST',
     body: formData,
   })
 
@@ -100,16 +114,28 @@ export async function queryComponent(
   identification?: ComponentIdentification | null,
 ): Promise<AnswerWithCitations> {
   const formData = new FormData()
-  formData.append("image", imageFile)
-  formData.append("question", question)
+  formData.append('image', imageFile)
+  formData.append('question', question)
   if (identification) {
-    formData.append("identification", JSON.stringify(identification))
+    formData.append('identification', JSON.stringify(identification))
   }
 
   const response = await fetch(`${getApiBaseUrl()}/query`, {
-    method: "POST",
+    method: 'POST',
     body: formData,
   })
 
   return parseJsonResponse<AnswerWithCitations>(response)
+}
+
+export async function getComponentHistory(
+  componentSerial: string,
+  limit = 10,
+): Promise<QueryLogEntry[]> {
+  const params = new URLSearchParams({
+    component_serial: componentSerial,
+    limit: limit.toString(),
+  })
+  const response = await fetch(`${getApiBaseUrl()}/history?${params.toString()}`)
+  return parseJsonResponse<QueryLogEntry[]>(response)
 }
