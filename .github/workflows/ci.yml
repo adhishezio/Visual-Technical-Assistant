@@ -138,7 +138,6 @@ jobs:
             --image=us-central1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/visual-tech-assistant/backend:${{ github.sha }} \
             --region=${{ secrets.GCP_REGION }} \
             --project=${{ secrets.GCP_PROJECT_ID }} \
-            --service-account=${{ secrets.GCP_SA_EMAIL }} \
             --min-instances=0 \
             --max-instances=3 \
             --concurrency=80 \
@@ -152,4 +151,5 @@ jobs:
             --region=${{ secrets.GCP_REGION }} \
             --project=${{ secrets.GCP_PROJECT_ID }} \
             --format="value(status.url)"
+
 
