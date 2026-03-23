@@ -143,8 +143,7 @@ jobs:
             --max-instances=3 \
             --concurrency=80 \
             --timeout=60 \
-            --set-env-vars="VECTOR_STORE=chroma,GOOGLE_CLOUD_PROJECT=gen-lang-client-0680686270,GOOGLE_CLOUD_LOCATION=us-central1,VERTEX_PROJECT_ID=jobhunt-490400,VERTEX_AI_LOCATION=us-central1,FIRESTORE_PROJECT_ID=jobhunt-490400,FIRESTORE_COLLECTION=component_chunks" \
-            --allow-unauthenticated
+            --set-env-vars="VECTOR_STORE=chroma,GOOGLE_CLOUD_PROJECT=gen-lang-client-0680686270,GOOGLE_CLOUD_LOCATION=us-central1,VERTEX_PROJECT_ID=jobhunt-490400,VERTEX_AI_LOCATION=us-central1,FIRESTORE_PROJECT_ID=jobhunt-490400,FIRESTORE_COLLECTION=component_chunks,GOOGLE_API_KEY=${{ secrets.GOOGLE_API_KEY }},TAVILY_API_KEY=${{ secrets.TAVILY_API_KEY }}"
 
       - name: Output Service URL
         run: |
@@ -152,3 +151,4 @@ jobs:
             --region=${{ secrets.GCP_REGION }} \
             --project=${{ secrets.GCP_PROJECT_ID }} \
             --format="value(status.url)"
+
