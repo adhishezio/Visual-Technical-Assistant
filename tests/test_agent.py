@@ -76,8 +76,9 @@ class FakeFetcher:
 
 
 class FakeVectorStore:
-    def __init__(self) -> None:
+    def __init__(self, exists: bool = False) -> None:
         self.added_chunks: list[list[DocumentChunk]] = []
+        self.exists = exists
 
     def add_documents(self, chunks, metadata) -> None:
         del metadata
@@ -91,7 +92,7 @@ class FakeVectorStore:
 
     def key_exists(self, cache_key: CacheKey) -> bool:
         del cache_key
-        return False
+        return self.exists
 
     def delete_by_key(self, cache_key: CacheKey) -> None:
         del cache_key
@@ -125,6 +126,56 @@ def test_prime_cache_skips_bad_candidate_and_ingests_next_result(test_settings) 
     assert fetcher.calls == ["https://example.com/bad", "https://example.com/good"]
     assert len(vector_store.added_chunks) == 1
     assert vector_store.added_chunks[0][0].chunk_text == "Rated current 40A."
+
+
+def test_prime_cache_returns_immediately_when_lookup_not_allowed(test_settings) -> None:
+    agent = VisualTechnicalAssistantAgent(
+        settings=test_settings,
+        search_service=cast(DocumentationSearchService, FakeSearchService()),
+        fetcher=cast(DocumentFetcher, FakeFetcher()),
+        vector_store=cast(VectorStore, FakeVectorStore()),
+    )
+    identification = ComponentIdentification(
+        manufacturer="ABB",
+        model_number="S 204 M B 40 UC",
+        part_number="2CD274061R0405",
+        component_type="Miniature Circuit Breaker",
+        confidence_score=0.3,
+        raw_ocr_text="ABB",
+        should_attempt_document_lookup=False,
+    )
+
+    primed = agent.prime_cache(identification)
+
+    assert primed is False
+
+
+def test_prime_cache_skips_search_when_component_is_already_cached(test_settings) -> None:
+    class ExplodingSearchService:
+        def search(self, identification, refined_query=None):
+            del identification
+            del refined_query
+            raise AssertionError("Search should not run when cache already exists.")
+
+    agent = VisualTechnicalAssistantAgent(
+        settings=test_settings,
+        search_service=cast(DocumentationSearchService, ExplodingSearchService()),
+        fetcher=cast(DocumentFetcher, FakeFetcher()),
+        vector_store=cast(VectorStore, FakeVectorStore(exists=True)),
+    )
+    identification = ComponentIdentification(
+        manufacturer="ABB",
+        model_number="S 204 M B 40 UC",
+        part_number="2CD274061R0405",
+        component_type="Miniature Circuit Breaker",
+        confidence_score=1.0,
+        raw_ocr_text="ABB S 204 M B 40 UC 2CD274061R0405",
+        should_attempt_document_lookup=True,
+    )
+
+    primed = agent.prime_cache(identification)
+
+    assert primed is True
 
 
 def test_generate_answer_falls_back_to_extractive_when_llm_returns_no_citations(

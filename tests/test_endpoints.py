@@ -200,6 +200,38 @@ def test_query_endpoint_accepts_prior_identification_payload() -> None:
     assert identification.model_number == "WS7200"
 
 
+def test_query_endpoint_ignores_invalid_identification_payload() -> None:
+    captured: dict[str, object] = {}
+
+    class CapturingAgent:
+        def run(
+            self,
+            image_bytes: bytes,
+            question: str,
+            mime_type: str = "image/jpeg",
+            identification: ComponentIdentification | None = None,
+        ) -> AnswerWithCitations:
+            del image_bytes
+            del question
+            del mime_type
+            captured["identification"] = identification
+            return build_safe_answer()
+
+    app.dependency_overrides[get_agent_runner] = lambda: CapturingAgent()
+
+    response = client.post(
+        "/query",
+        data={
+            "question": "What is the input voltage?",
+            "identification": '{"manufacturer": "ABB"',
+        },
+        files={"image": ("component.jpg", b"image-bytes", "image/jpeg")},
+    )
+
+    assert response.status_code == 200
+    assert captured["identification"] is None
+
+
 
 def test_health_endpoint_reports_vector_store_status() -> None:
     app.dependency_overrides[get_health_vector_store] = lambda: FakeVectorStore(True)
