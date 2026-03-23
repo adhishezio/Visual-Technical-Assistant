@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { startTransition, useEffect, useState } from 'react'
 import { Header } from '@/components/header'
 import {
   CameraStage,
@@ -63,7 +63,7 @@ function buildIdentificationMessage(
 
   if (identification.should_attempt_document_lookup) {
     lines.push(
-      'Ask a specification or maintenance question and the system will retrieve cited documentation before answering.',
+      'Official documentation is being prepared in the background. Ask a specification or maintenance question and the system will answer from cited sources.',
     )
   } else {
     lines.push(
@@ -140,6 +140,18 @@ export default function HomePage() {
     }
   }, [selectedImage])
 
+  const handleResetWorkspace = () => {
+    revokeIfBlobUrl(selectedImage?.previewUrl)
+    startTransition(() => {
+      setStageState('default')
+      setSelectedImage(null)
+      setIdentification(null)
+      setMessages([])
+      setErrorMessage(null)
+      setIsQuerying(false)
+    })
+  }
+
   const handleImageSelected = async (selection: SelectedImage) => {
     revokeIfBlobUrl(selectedImage?.previewUrl)
     setSelectedImage(selection)
@@ -150,8 +162,10 @@ export default function HomePage() {
 
     try {
       const result = await identifyComponent(selection.file)
-      setIdentification(result)
-      setMessages([buildIdentificationMessage(result)])
+      startTransition(() => {
+        setIdentification(result)
+        setMessages([buildIdentificationMessage(result)])
+      })
     } catch (error) {
       setErrorMessage(getErrorMessage(error))
       setMessages([
@@ -208,17 +222,21 @@ export default function HomePage() {
   }
 
   return (
-    <div className="flex h-svh flex-col overflow-hidden bg-background">
-      <Header />
+    <div className="industrial-shell flex h-svh min-w-0 flex-col overflow-hidden bg-background">
+      <Header
+        hasActiveInspection={stageState !== 'default'}
+        onReset={handleResetWorkspace}
+      />
 
-      <main className="flex min-h-0 flex-1 flex-col xl:grid xl:grid-cols-[minmax(0,1.2fr)_minmax(380px,460px)] xl:overflow-hidden">
+      <main className="grid min-h-0 min-w-0 flex-1 grid-cols-1 overflow-hidden xl:grid-cols-[minmax(0,1fr)_minmax(21rem,28rem)] 2xl:grid-cols-[minmax(0,1.08fr)_minmax(23rem,30rem)]">
         <CameraStage
           state={stageState}
           selectedImage={selectedImage}
           onImageSelected={handleImageSelected}
+          onReset={handleResetWorkspace}
         />
 
-        <div className="flex min-h-0 flex-1 flex-col border-t bg-card xl:border-l xl:border-t-0">
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col border-t border-slate-300/80 bg-white/88 backdrop-blur xl:border-l xl:border-t-0">
           <DataPanel
             state={stageState}
             identification={identification}

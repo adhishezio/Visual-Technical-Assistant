@@ -4,7 +4,10 @@ from fastapi.testclient import TestClient
 
 from backend.agent.graph import VisualTechnicalAssistantAgent
 from backend.agent.nodes import build_safe_answer
-from backend.api.routes.identify import get_vision_service
+from backend.api.routes.identify import (
+    get_agent_runner as get_identify_agent_runner,
+    get_vision_service,
+)
 from backend.api.routes.query import get_agent_runner
 from backend.core.models import AnswerWithCitations, ComponentIdentification
 from backend.main import app, get_health_vector_store
@@ -14,7 +17,11 @@ client = TestClient(app)
 
 
 class FakeVisionService(VisionIdentificationService):
-    def identify_component(self, image_bytes: bytes, mime_type: str = "image/jpeg") -> ComponentIdentification:
+    def identify_component(
+        self,
+        image_bytes: bytes,
+        mime_type: str = "image/jpeg",
+    ) -> ComponentIdentification:
         del image_bytes
         del mime_type
         return ComponentIdentification(
@@ -72,6 +79,7 @@ class FakeVectorStore:
 
 def test_identify_endpoint_returns_typed_identification() -> None:
     app.dependency_overrides[get_vision_service] = lambda: FakeVisionService()
+    app.dependency_overrides[get_identify_agent_runner] = lambda: None
 
     response = client.post(
         "/identify",
@@ -84,6 +92,27 @@ def test_identify_endpoint_returns_typed_identification() -> None:
     assert body["part_number"] == "6ES7214-1AG40-0XB0"
     assert body["should_attempt_document_lookup"] is True
 
+
+def test_identify_endpoint_primes_cache_in_background() -> None:
+    captured: dict[str, object] = {}
+
+    class PrimingAgent:
+        def prime_cache(self, identification: ComponentIdentification) -> bool:
+            captured["identification"] = identification
+            return True
+
+    app.dependency_overrides[get_vision_service] = lambda: FakeVisionService()
+    app.dependency_overrides[get_identify_agent_runner] = lambda: PrimingAgent()
+
+    response = client.post(
+        "/identify",
+        files={"image": ("component.jpg", b"image-bytes", "image/jpeg")},
+    )
+
+    assert response.status_code == 200
+    identification = captured["identification"]
+    assert isinstance(identification, ComponentIdentification)
+    assert identification.model_number == "SIMATIC S7-1200"
 
 
 def test_query_endpoint_replaces_uncited_answer_with_safe_message() -> None:

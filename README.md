@@ -166,13 +166,13 @@ Example `curl` requests:
 
 ```bash
 curl -X POST http://localhost:8000/identify \
-  -F "image=@test_image2.jpg"
+  -F "image=@test_images/s200-m-uc-range-product-image-large.jpg"
 ```
 
 ```bash
 curl -X POST http://localhost:8000/query \
-  -F "image=@test_image2.jpg" \
-  -F "question=What is the input voltage?"
+  -F "image=@test_images/s200-m-uc-range-product-image-large.jpg" \
+  -F "question=What is the rated current?"
 ```
 
 ## Environment Variables

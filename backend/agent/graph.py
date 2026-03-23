@@ -1,15 +1,19 @@
 from __future__ import annotations
 
+import logging
+
 from langgraph.graph import END, START, StateGraph
 
 from backend.agent.nodes import TechnicalAssistantNodes, build_safe_answer
 from backend.agent.state import AgentState
 from backend.core.config import Settings, get_settings
-from backend.core.models import AnswerWithCitations
+from backend.core.models import AnswerWithCitations, ComponentIdentification
 from backend.services.fetcher import DocumentFetcher
 from backend.services.search import DocumentationSearchService
 from backend.services.vision import VisionIdentificationService
 from backend.vector_store.base import VectorStore
+
+logger = logging.getLogger(__name__)
 
 
 class VisualTechnicalAssistantAgent:
@@ -50,6 +54,41 @@ class VisualTechnicalAssistantAgent:
         }
         final_state = self.graph.invoke(initial_state)
         return final_state.get("answer") or build_safe_answer()
+
+    def prime_cache(self, identification: ComponentIdentification) -> bool:
+        if not identification.should_attempt_document_lookup:
+            return False
+
+        cache_key = identification.to_cache_key()
+        if self.nodes.vector_store.key_exists(cache_key):
+            return True
+
+        documentation_candidates = self.nodes.search_service.search(identification)
+        fetched_documents = 0
+
+        for candidate in documentation_candidates:
+            try:
+                chunks = self.nodes.fetcher.fetch(candidate, identification, cache_key)
+            except Exception as exc:
+                logger.info(
+                    "[prime_cache] skipped url=%s reason=%r",
+                    candidate.url,
+                    str(exc),
+                )
+                continue
+            if not chunks:
+                continue
+            self.nodes.vector_store.add_documents(chunks=chunks, metadata=chunks[0].metadata)
+            fetched_documents += 1
+            if fetched_documents >= 3:
+                break
+
+        logger.info(
+            "[prime_cache] key=%s fetched_documents=%s",
+            cache_key.value,
+            fetched_documents,
+        )
+        return fetched_documents > 0
 
 
 

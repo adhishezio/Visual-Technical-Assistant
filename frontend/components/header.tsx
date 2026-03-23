@@ -1,112 +1,75 @@
 'use client'
 
-import { Clock, Cpu } from 'lucide-react'
+import { ArrowLeft, Cpu, DatabaseZap, ShieldCheck } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-  SheetTrigger,
-} from '@/components/ui/sheet'
-import { ScrollArea } from '@/components/ui/scroll-area'
 
-interface HistoryItem {
-  id: string
-  manufacturer: string
-  model: string
-  timestamp: string
-  thumbnail: string
+interface HeaderProps {
+  hasActiveInspection: boolean
+  onReset: () => void
 }
 
-const mockHistory: HistoryItem[] = [
-  {
-    id: '1',
-    manufacturer: 'Siemens',
-    model: 'S7-1200',
-    timestamp: 'Today, 14:30',
-    thumbnail: '/api/placeholder/60/60',
-  },
-  {
-    id: '2',
-    manufacturer: 'Allen-Bradley',
-    model: 'CompactLogix 5380',
-    timestamp: 'Today, 11:15',
-    thumbnail: '/api/placeholder/60/60',
-  },
-  {
-    id: '3',
-    manufacturer: 'Schneider Electric',
-    model: 'Modicon M340',
-    timestamp: 'Yesterday, 16:45',
-    thumbnail: '/api/placeholder/60/60',
-  },
-  {
-    id: '4',
-    manufacturer: 'ASUS',
-    model: 'ROG Maximus Z790',
-    timestamp: 'Yesterday, 09:20',
-    thumbnail: '/api/placeholder/60/60',
-  },
-]
-
-export function Header() {
+function StatusBadge({
+  label,
+  tone = 'default',
+}: {
+  label: string
+  tone?: 'default' | 'accent'
+}) {
   return (
-    <header className="sticky top-0 z-40 flex h-14 items-center justify-between border-b bg-card px-4 shadow-sm">
-      <div className="flex items-center gap-2">
-        <div className="flex size-8 items-center justify-center rounded-lg bg-primary">
-          <Cpu className="size-5 text-primary-foreground" />
-        </div>
-        <span className="text-lg font-semibold text-foreground">
-          Visual Technical Assistant
-        </span>
-      </div>
-
-      <Sheet>
-        <SheetTrigger asChild>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="transition-transform active:scale-95"
-            aria-label="View scan history"
-          >
-            <Clock className="size-5" />
-          </Button>
-        </SheetTrigger>
-        <SheetContent className="w-80 sm:w-96">
-          <SheetHeader>
-            <SheetTitle>Scan History</SheetTitle>
-          </SheetHeader>
-          <ScrollArea className="mt-4 h-[calc(100vh-8rem)]">
-            <div className="flex flex-col gap-3 pr-4">
-              {mockHistory.map((item) => (
-                <HistoryCard key={item.id} item={item} />
-              ))}
-            </div>
-          </ScrollArea>
-        </SheetContent>
-      </Sheet>
-    </header>
+    <span
+      className={`inline-flex items-center rounded-full border px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] ${
+        tone === 'accent'
+          ? 'border-amber-300/80 bg-amber-50 text-amber-900'
+          : 'border-slate-300/80 bg-white/85 text-slate-600'
+      }`}
+    >
+      {label}
+    </span>
   )
 }
 
-function HistoryCard({ item }: { item: HistoryItem }) {
+export function Header({ hasActiveInspection, onReset }: HeaderProps) {
   return (
-    <button
-      className="flex w-full items-center gap-3 rounded-xl border bg-card p-3 text-left shadow-sm transition-all hover:border-primary/30 hover:shadow-md active:scale-[0.98]"
-      type="button"
-    >
-      <div className="size-12 shrink-0 overflow-hidden rounded-lg bg-muted">
-        <div className="flex size-full items-center justify-center text-muted-foreground">
-          <Cpu className="size-5" />
+    <header className="z-40 border-b border-slate-300/80 bg-white/88 backdrop-blur-xl">
+      <div className="flex min-w-0 flex-wrap items-center justify-between gap-4 px-4 py-4 sm:px-6">
+        <div className="flex min-w-0 items-center gap-3">
+          <div className="flex size-11 shrink-0 items-center justify-center rounded-2xl bg-primary shadow-[0_14px_30px_-18px_rgba(37,99,235,0.8)]">
+            <Cpu className="size-5 text-primary-foreground" />
+          </div>
+          <div className="min-w-0">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">
+              Industrial Diagnostics
+            </p>
+            <h1 className="truncate text-2xl font-semibold tracking-tight text-slate-900">
+              Visual Technical Assistant
+            </h1>
+          </div>
+        </div>
+
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <StatusBadge label="Chroma Cache" />
+          <StatusBadge label="Citation Guard" tone="accent" />
+          <span className="hidden items-center gap-2 rounded-full border border-slate-300/80 bg-slate-50/90 px-3 py-1 text-[11px] font-medium uppercase tracking-[0.18em] text-slate-600 lg:inline-flex">
+            <DatabaseZap className="size-3.5" />
+            No Vertex Active
+          </span>
+          <span className="hidden items-center gap-2 rounded-full border border-emerald-200/80 bg-emerald-50/90 px-3 py-1 text-[11px] font-medium uppercase tracking-[0.18em] text-emerald-800 md:inline-flex">
+            <ShieldCheck className="size-3.5" />
+            Official Sources Only
+          </span>
+          {hasActiveInspection && (
+            <Button
+              type="button"
+              variant="outline"
+              className="rounded-full border-slate-300 bg-white/90 px-4 text-slate-700 shadow-sm"
+              onClick={onReset}
+            >
+              <ArrowLeft className="size-4" />
+              New inspection
+            </Button>
+          )}
         </div>
       </div>
-      <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-medium text-foreground">
-          {item.manufacturer} {item.model}
-        </p>
-        <p className="text-xs text-muted-foreground">{item.timestamp}</p>
-      </div>
-    </button>
+    </header>
   )
 }

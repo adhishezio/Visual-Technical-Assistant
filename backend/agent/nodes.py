@@ -341,6 +341,21 @@ class TechnicalAssistantNodes:
                 "current_node": "generate_answer",
             }
 
+        extractive_answer = self._build_extractive_answer(
+            state["question"],
+            retrieved_chunks,
+        )
+        if self._should_use_extractive_fast_path(state["question"], extractive_answer):
+            logger.info(
+                "[generate] chunks=%s mode=extractive_fast has_citations=%s",
+                len(retrieved_chunks),
+                extractive_answer.has_citations,
+            )
+            return {
+                "answer": extractive_answer,
+                "current_node": "generate_answer",
+            }
+
         try:
             generated = generate_structured_content(
                 prompt=build_answer_generation_prompt(
@@ -376,6 +391,16 @@ class TechnicalAssistantNodes:
             citations=citations,
             confidence=generated.confidence,
         )
+        if not answer.has_citations and extractive_answer.has_citations:
+            logger.info(
+                "[generate] chunks=%s mode=extractive_fallback has_citations=%s",
+                len(retrieved_chunks),
+                extractive_answer.has_citations,
+            )
+            return {
+                "answer": extractive_answer,
+                "current_node": "generate_answer",
+            }
         logger.info(
             "[generate] chunks=%s citation_indexes=%s has_citations=%s confidence=%.2f",
             len(retrieved_chunks),
@@ -555,6 +580,34 @@ class TechnicalAssistantNodes:
             answer_text=best_sentence,
             citations=[best_chunk],
             confidence=0.42,
+        )
+
+    @staticmethod
+    def _should_use_extractive_fast_path(
+        question: str,
+        extractive_answer: AnswerWithCitations,
+    ) -> bool:
+        if not extractive_answer.has_citations:
+            return False
+
+        question_tokens = _question_tokens(question)
+        return bool(
+            question_tokens
+            & {
+                "voltage",
+                "current",
+                "power",
+                "watt",
+                "amp",
+                "frequency",
+                "rating",
+                "rated",
+                "standard",
+                "standards",
+                "certification",
+                "certifications",
+                "temperature",
+            }
         )
 
 

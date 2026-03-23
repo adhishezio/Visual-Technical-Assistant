@@ -3,21 +3,15 @@
 import { useEffect, useRef, useState } from 'react'
 import {
   AlertTriangle,
-  ChevronDown,
-  ChevronUp,
-  ExternalLink,
   FileText,
+  Gauge,
   Send,
   ShieldCheck,
-  Thermometer,
+  Sparkles,
   Zap,
-  Cable,
-  Cpu,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
-import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area'
 import {
   Collapsible,
   CollapsibleContent,
@@ -42,10 +36,26 @@ export interface ChatMessage {
 }
 
 const quickActions = [
-  { label: 'Operating Voltage', icon: <Zap className="size-3.5" /> },
-  { label: 'Pinout Diagram', icon: <Cable className="size-3.5" /> },
-  { label: 'Datasheet', icon: <FileText className="size-3.5" /> },
-  { label: 'Temperature Range', icon: <Thermometer className="size-3.5" /> },
+  {
+    label: 'Operating voltage',
+    prompt: 'What is the operating voltage for this component?',
+    icon: <Zap className="size-3.5" />,
+  },
+  {
+    label: 'Current rating',
+    prompt: 'What is the rated current for this component?',
+    icon: <Gauge className="size-3.5" />,
+  },
+  {
+    label: 'Applicable standards',
+    prompt: 'What standards or certifications apply to this component?',
+    icon: <ShieldCheck className="size-3.5" />,
+  },
+  {
+    label: 'Datasheet summary',
+    prompt: 'Summarize the official datasheet for this component.',
+    icon: <FileText className="size-3.5" />,
+  },
 ]
 
 interface DataPanelProps {
@@ -65,7 +75,7 @@ export function DataPanel({
   errorMessage,
   onAskQuestion,
 }: DataPanelProps) {
-  const [specsOpen, setSpecsOpen] = useState(false)
+  const [detailsOpen, setDetailsOpen] = useState(true)
   const [inputValue, setInputValue] = useState('')
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
@@ -80,193 +90,222 @@ export function DataPanel({
     await onAskQuestion(question)
   }
 
-  const handleQuickAction = (action: string) => {
-    setInputValue(`What is the ${action.toLowerCase()} for this component?`)
-  }
-
   if (state === 'default') {
     return (
-      <div className="flex min-h-0 flex-1 flex-col items-center justify-center p-8 text-center">
-        <div className="flex size-16 items-center justify-center rounded-full bg-muted">
-          <Cpu className="size-8 text-muted-foreground" />
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col items-center justify-center px-6 py-10 text-center">
+        <div className="rounded-[1.75rem] border border-slate-200 bg-white/92 px-8 py-10 shadow-[0_24px_70px_-44px_rgba(15,23,42,0.45)]">
+          <div className="mx-auto flex size-16 items-center justify-center rounded-2xl bg-sky-50 text-primary">
+            <Sparkles className="size-8" />
+          </div>
+          <h3 className="mt-5 text-xl font-semibold text-slate-900">
+            Inspection workspace
+          </h3>
+          <p className="mt-3 max-w-sm text-sm leading-7 text-slate-600">
+            Select a real component image to open the analysis workspace. The
+            right panel will track identification confidence, documentation
+            readiness, citations, and question history.
+          </p>
         </div>
-        <h3 className="mt-4 text-lg font-medium text-foreground">
-          No Component Scanned
-        </h3>
-        <p className="mt-1 max-w-xs text-sm text-muted-foreground">
-          Upload a component photo or choose a demo image to identify the
-          hardware and ask specification questions.
-        </p>
       </div>
     )
   }
 
   if (state === 'scanning') {
     return (
-      <div className="flex min-h-0 flex-1 flex-col gap-6 p-4">
-        <div className="animate-pulse space-y-4">
-          <div className="flex items-center gap-4">
-            <div className="size-14 rounded-xl bg-muted" />
-            <div className="flex-1 space-y-2">
-              <div className="h-4 w-32 rounded bg-muted" />
-              <div className="h-3 w-24 rounded bg-muted" />
-            </div>
-            <div className="size-12 rounded-full bg-muted" />
-          </div>
-          <div className="flex gap-2">
-            {[1, 2, 3, 4].map((item) => (
-              <div key={item} className="h-8 w-24 rounded-full bg-muted" />
-            ))}
-          </div>
-          <div className="space-y-2">
-            <div className="h-4 w-full rounded bg-muted" />
-            <div className="h-4 w-5/6 rounded bg-muted" />
-            <div className="h-4 w-4/6 rounded bg-muted" />
-          </div>
-        </div>
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-4 p-5">
+        <SkeletonCard />
+        <SkeletonCard />
       </div>
     )
   }
 
   const specs = buildSpecs(identification)
+  const confidence = Math.round((identification?.confidence_score ?? 0) * 100)
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
-      <ScrollArea className="min-h-0 flex-1">
-        <div className="space-y-4 p-4">
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-[linear-gradient(180deg,rgba(255,255,255,0.92),rgba(239,243,247,0.96))]">
+      <div className="min-w-0 border-b border-slate-200/90 bg-white/80 px-5 py-4 backdrop-blur">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div className="min-w-0">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+              Inspection summary
+            </p>
+            <h2 className="mt-1 break-words text-2xl font-semibold tracking-tight text-slate-900">
+              {identification?.model_number ||
+                identification?.part_number ||
+                identification?.component_type ||
+                'Component identified'}
+            </h2>
+            <p className="mt-2 break-words text-sm leading-6 text-slate-600">
+              {identification?.manufacturer || 'Unknown manufacturer'}
+              {identification?.component_type
+                ? ` · ${identification.component_type}`
+                : ''}
+            </p>
+          </div>
+
+          <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-right shadow-sm">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+              Confidence
+            </p>
+            <p className="mt-1 text-2xl font-semibold text-slate-900">
+              {confidence}%
+            </p>
+          </div>
+        </div>
+
+        <div className="mt-4 h-2 overflow-hidden rounded-full bg-slate-200">
+          <div
+            className={`h-full rounded-full transition-all duration-500 ${
+              confidence >= 80
+                ? 'bg-emerald-500'
+                : confidence >= 60
+                  ? 'bg-amber-500'
+                  : 'bg-rose-500'
+            }`}
+            style={{ width: `${Math.max(confidence, 4)}%` }}
+          />
+        </div>
+
+        <div className="mt-4 flex flex-wrap gap-2">
+          <StatusPill
+            tone={identification?.should_attempt_document_lookup ? 'good' : 'muted'}
+          >
+            {identification?.should_attempt_document_lookup
+              ? 'Documentation cache warming'
+              : 'Manual follow-up recommended'}
+          </StatusPill>
+          <StatusPill tone="muted">Chroma cache</StatusPill>
+          <StatusPill tone="accent">Citations required</StatusPill>
+        </div>
+      </div>
+
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+        <div className="min-w-0 border-b border-slate-200/80 bg-white/70 px-5 py-4">
           {errorMessage && (
-            <div className="rounded-2xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950">
+            <div className="mb-4 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">
               <div className="flex items-start gap-3">
                 <AlertTriangle className="mt-0.5 size-4 shrink-0" />
-                <div>
-                  <p className="font-medium">Backend response warning</p>
-                  <p className="mt-1 text-amber-900">{errorMessage}</p>
+                <div className="min-w-0">
+                  <p className="font-semibold">Backend response warning</p>
+                  <p className="mt-1 break-words leading-6 text-amber-900">
+                    {errorMessage}
+                  </p>
                 </div>
               </div>
             </div>
           )}
 
-          <div className="rounded-2xl border bg-card p-4 shadow-sm">
-            <div className="flex items-start gap-4">
-              <div className="flex size-14 shrink-0 items-center justify-center rounded-xl bg-primary/10">
-                <Cpu className="size-7 text-primary" />
-              </div>
-              <div className="min-w-0 flex-1">
-                <p className="text-sm text-muted-foreground">
-                  {identification?.manufacturer || 'Unknown manufacturer'}
-                </p>
-                <h3 className="truncate text-lg font-semibold text-foreground">
-                  {identification?.model_number ||
-                    identification?.part_number ||
-                    identification?.component_type ||
-                    'Component identified'}
-                </h3>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  {identification?.component_type || 'Type not confirmed yet'}
-                </p>
-              </div>
-              <ConfidenceRing
-                confidence={Math.round(
-                  (identification?.confidence_score ?? 0) * 100,
-                )}
-              />
-            </div>
-
-            <Collapsible open={specsOpen} onOpenChange={setSpecsOpen}>
-              <CollapsibleTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="mt-3 w-full justify-between text-muted-foreground hover:text-foreground"
-                >
-                  <span>Identification Details</span>
-                  {specsOpen ? (
-                    <ChevronUp className="size-4" />
-                  ) : (
-                    <ChevronDown className="size-4" />
-                  )}
-                </Button>
-              </CollapsibleTrigger>
-              <CollapsibleContent className="mt-2">
-                <div className="grid grid-cols-2 gap-2">
-                  {specs.map((spec) => (
-                    <div
-                      key={spec.label}
-                      className="rounded-lg bg-muted/50 p-2.5"
-                    >
-                      <p className="text-xs text-muted-foreground">
-                        {spec.label}
-                      </p>
-                      <p className="text-sm font-medium text-foreground">
-                        {spec.value}
-                      </p>
-                    </div>
-                  ))}
+          <Collapsible open={detailsOpen} onOpenChange={setDetailsOpen}>
+            <CollapsibleTrigger asChild>
+              <button
+                type="button"
+                className="flex w-full items-center justify-between rounded-2xl border border-slate-200 bg-slate-50/80 px-4 py-3 text-left transition-colors hover:border-slate-300 hover:bg-white"
+              >
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                    Identification details
+                  </p>
+                  <p className="mt-1 text-sm text-slate-600">
+                    Manufacturer, part data, and current lookup posture
+                  </p>
                 </div>
-              </CollapsibleContent>
-            </Collapsible>
-          </div>
+                <span className="text-sm font-medium text-slate-600">
+                  {detailsOpen ? 'Hide' : 'Show'}
+                </span>
+              </button>
+            </CollapsibleTrigger>
+            <CollapsibleContent className="mt-3">
+              <div className="grid gap-3 sm:grid-cols-2">
+                {specs.map((spec) => (
+                  <div
+                    key={spec.label}
+                    className="rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm"
+                  >
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                      {spec.label}
+                    </p>
+                    <p className="mt-2 break-words font-mono text-sm leading-6 text-slate-900">
+                      {spec.value}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </CollapsibleContent>
+          </Collapsible>
 
-          <ScrollArea className="w-full whitespace-nowrap">
-            <div className="flex gap-2 pb-2">
-              {quickActions.map((action) => (
-                <button
-                  key={action.label}
-                  onClick={() => handleQuickAction(action.label)}
-                  className="inline-flex items-center gap-1.5 rounded-full border bg-card px-3 py-1.5 text-sm font-medium text-foreground shadow-sm transition-all hover:border-primary/50 hover:bg-accent active:scale-95"
-                  type="button"
-                >
-                  {action.icon}
-                  {action.label}
-                </button>
-              ))}
-            </div>
-            <ScrollBar orientation="horizontal" />
-          </ScrollArea>
-
-          <div className="space-y-4">
-            {messages.map((message) => (
-              <ChatMessageBubble key={message.id} message={message} />
+          <div className="mt-4 flex flex-wrap gap-2">
+            {quickActions.map((action) => (
+              <button
+                key={action.label}
+                onClick={() => setInputValue(action.prompt)}
+                className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3.5 py-2 text-sm font-medium text-slate-700 shadow-sm transition-all hover:border-primary/35 hover:bg-sky-50 hover:text-slate-900"
+                type="button"
+              >
+                {action.icon}
+                {action.label}
+              </button>
             ))}
-            {isQuerying && (
-              <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <div className="flex gap-1">
-                  <span className="size-2 animate-bounce rounded-full bg-primary [animation-delay:-0.3s]" />
-                  <span className="size-2 animate-bounce rounded-full bg-primary [animation-delay:-0.15s]" />
-                  <span className="size-2 animate-bounce rounded-full bg-primary" />
-                </div>
-                <span>Retrieving documentation and drafting a cited answer...</span>
-              </div>
-            )}
-            <div ref={messagesEndRef} />
           </div>
         </div>
-      </ScrollArea>
 
-      <div className="border-t bg-card p-4">
-        <form
-          onSubmit={(event) => {
-            event.preventDefault()
-            void handleSendMessage()
-          }}
-          className="flex items-center gap-2"
-        >
-          <Input
-            value={inputValue}
-            onChange={(event) => setInputValue(event.target.value)}
-            placeholder="Ask about this component..."
-            className="flex-1 rounded-xl"
-          />
-          <Button
-            type="submit"
-            size="icon"
-            disabled={!inputValue.trim() || isQuerying}
-            className="shrink-0 rounded-xl transition-transform active:scale-95"
-          >
-            <Send className="size-4" />
-            <span className="sr-only">Send message</span>
-          </Button>
-        </form>
+        <div className="min-h-0 min-w-0 flex-1 overflow-hidden">
+          <div className="flex h-full min-w-0 flex-col overflow-hidden">
+            <div className="min-h-0 min-w-0 flex-1 overflow-y-auto px-5 py-5">
+              <div className="space-y-4">
+                {messages.map((message) => (
+                  <ChatMessageBubble key={message.id} message={message} />
+                ))}
+                {isQuerying && (
+                  <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600 shadow-sm">
+                    <div className="flex items-center gap-2">
+                      <div className="flex gap-1">
+                        <span className="size-2 animate-bounce rounded-full bg-primary [animation-delay:-0.3s]" />
+                        <span className="size-2 animate-bounce rounded-full bg-primary [animation-delay:-0.15s]" />
+                        <span className="size-2 animate-bounce rounded-full bg-primary" />
+                      </div>
+                      Preparing a cited answer from official documentation...
+                    </div>
+                  </div>
+                )}
+                <div ref={messagesEndRef} />
+              </div>
+            </div>
+
+            <div className="border-t border-slate-200/90 bg-white/90 px-5 py-4 backdrop-blur">
+              <form
+                onSubmit={(event) => {
+                  event.preventDefault()
+                  void handleSendMessage()
+                }}
+                className="space-y-3"
+              >
+                <div className="rounded-[1.75rem] border border-slate-300 bg-slate-50 p-2 shadow-[0_16px_32px_-24px_rgba(15,23,42,0.6)]">
+                  <div className="flex min-w-0 items-center gap-2">
+                    <Input
+                      value={inputValue}
+                      onChange={(event) => setInputValue(event.target.value)}
+                      placeholder="Ask for voltage, standards, manuals, wiring notes, or maintenance specs..."
+                      className="h-12 flex-1 border-0 bg-transparent px-4 text-sm shadow-none focus-visible:ring-0"
+                    />
+                    <Button
+                      type="submit"
+                      size="icon"
+                      disabled={!inputValue.trim() || isQuerying}
+                      className="size-11 shrink-0 rounded-full shadow-[0_14px_30px_-20px_rgba(37,99,235,0.85)]"
+                    >
+                      <Send className="size-4" />
+                      <span className="sr-only">Send message</span>
+                    </Button>
+                  </div>
+                </div>
+                <p className="text-xs uppercase tracking-[0.18em] text-slate-500">
+                  The assistant will refuse uncited answers.
+                </p>
+              </form>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   )
@@ -279,8 +318,8 @@ function buildSpecs(
     return [
       { label: 'Manufacturer', value: 'Pending' },
       { label: 'Model', value: 'Pending' },
-      { label: 'Part Number', value: 'Pending' },
-      { label: 'Document Lookup', value: 'Pending' },
+      { label: 'Part number', value: 'Pending' },
+      { label: 'Lookup strategy', value: 'Pending' },
     ]
   }
 
@@ -294,60 +333,56 @@ function buildSpecs(
       value: identification.model_number || 'Unknown',
     },
     {
-      label: 'Part Number',
+      label: 'Part number',
       value: identification.part_number || 'Not extracted',
     },
     {
-      label: 'Lookup Strategy',
+      label: 'Lookup strategy',
       value: identification.should_attempt_document_lookup
-        ? 'Documentation lookup enabled'
-        : 'Manual follow-up recommended',
+        ? 'Background cache warm-up enabled'
+        : 'Documentation lookup not yet trusted',
     },
     {
-      label: 'Fallback Tier',
+      label: 'Fallback tier',
       value: identification.fallback_tier.toString(),
     },
     {
-      label: 'OCR Text',
+      label: 'OCR / extracted text',
       value: identification.raw_ocr_text || 'No OCR text found',
     },
   ]
 }
 
-function ConfidenceRing({ confidence }: { confidence: number }) {
-  const radius = 18
-  const circumference = 2 * Math.PI * radius
-  const clamped = Math.max(0, Math.min(confidence, 100))
-  const strokeDashoffset = circumference - (clamped / 100) * circumference
+function StatusPill({
+  children,
+  tone,
+}: {
+  children: string
+  tone: 'good' | 'muted' | 'accent'
+}) {
+  const toneClass =
+    tone === 'good'
+      ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+      : tone === 'accent'
+        ? 'border-sky-200 bg-sky-50 text-sky-800'
+        : 'border-slate-200 bg-slate-100 text-slate-600'
 
   return (
-    <div className="relative flex size-12 items-center justify-center">
-      <svg className="size-12 -rotate-90" viewBox="0 0 40 40">
-        <circle
-          cx="20"
-          cy="20"
-          r={radius}
-          strokeWidth="3"
-          fill="none"
-          className="stroke-muted"
-        />
-        <circle
-          cx="20"
-          cy="20"
-          r={radius}
-          strokeWidth="3"
-          fill="none"
-          strokeLinecap="round"
-          className="stroke-green-500 transition-all duration-500"
-          style={{
-            strokeDasharray: circumference,
-            strokeDashoffset,
-          }}
-        />
-      </svg>
-      <span className="absolute text-xs font-semibold text-foreground">
-        {clamped}%
-      </span>
+    <span
+      className={`inline-flex items-center rounded-full border px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] ${toneClass}`}
+    >
+      {children}
+    </span>
+  )
+}
+
+function SkeletonCard() {
+  return (
+    <div className="animate-pulse rounded-[1.75rem] border border-slate-200 bg-white/85 p-5 shadow-sm">
+      <div className="h-4 w-32 rounded bg-slate-200" />
+      <div className="mt-4 h-10 w-full rounded-xl bg-slate-100" />
+      <div className="mt-3 h-10 w-5/6 rounded-xl bg-slate-100" />
+      <div className="mt-3 h-24 w-full rounded-2xl bg-slate-100" />
     </div>
   )
 }
@@ -356,8 +391,8 @@ function ChatMessageBubble({ message }: { message: ChatMessage }) {
   if (message.role === 'user') {
     return (
       <div className="flex justify-end">
-        <div className="max-w-[85%] rounded-2xl bg-primary px-4 py-2 text-sm text-primary-foreground">
-          {message.content}
+        <div className="max-w-full rounded-[1.75rem] bg-primary px-4 py-3 text-sm leading-7 text-primary-foreground shadow-[0_18px_36px_-24px_rgba(37,99,235,0.8)]">
+          <p className="break-words">{message.content}</p>
         </div>
       </div>
     )
@@ -365,39 +400,38 @@ function ChatMessageBubble({ message }: { message: ChatMessage }) {
 
   return (
     <div className="space-y-3">
-      <div className="rounded-2xl border bg-card p-4 shadow-sm">
+      <div className="rounded-[1.75rem] border border-slate-200 bg-white px-4 py-4 shadow-sm">
         <SimpleMarkdownContent content={message.content} />
       </div>
 
       {message.citations && message.citations.length > 0 && (
-        <ScrollArea className="w-full whitespace-nowrap">
-          <div className="flex gap-2 pb-2">
-            {message.citations.map((citation) => (
-              <a
-                key={citation.id}
-                href={citation.url}
-                target="_blank"
-                rel="noreferrer"
-                className="flex items-center gap-2 rounded-lg border bg-card px-3 py-2 text-sm shadow-sm transition-all hover:border-primary/50 hover:shadow-md"
-              >
-                <span className="flex size-8 items-center justify-center rounded-full bg-primary/10 text-primary">
-                  <ShieldCheck className="size-4" />
-                </span>
-                <div className="flex min-w-0 flex-col">
-                  <span className="max-w-48 truncate font-medium text-foreground">
-                    {citation.title}
-                  </span>
-                  <span className="text-xs text-muted-foreground">
-                    {citation.documentType}
-                    {citation.pageNumber ? ` | page ${citation.pageNumber}` : ''}
-                  </span>
-                </div>
-                <ExternalLink className="ml-1 size-3.5 text-muted-foreground" />
-              </a>
-            ))}
-          </div>
-          <ScrollBar orientation="horizontal" />
-        </ScrollArea>
+        <div className="space-y-2">
+          {message.citations.map((citation) => (
+            <a
+              key={citation.id}
+              href={citation.url}
+              target="_blank"
+              rel="noreferrer"
+              className="flex min-w-0 items-start gap-3 rounded-2xl border border-slate-200 bg-slate-50/80 px-4 py-3 text-sm shadow-sm transition-colors hover:border-primary/35 hover:bg-white"
+            >
+              <span className="mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-full bg-sky-50 text-primary">
+                <ShieldCheck className="size-4" />
+              </span>
+              <div className="min-w-0">
+                <p className="truncate font-semibold text-slate-900">
+                  {citation.title}
+                </p>
+                <p className="mt-1 break-words text-xs uppercase tracking-[0.18em] text-slate-500">
+                  {citation.documentType}
+                  {citation.pageNumber ? ` | page ${citation.pageNumber}` : ''}
+                </p>
+                <p className="mt-2 break-all text-xs text-slate-500">
+                  {citation.url}
+                </p>
+              </div>
+            </a>
+          ))}
+        </div>
       )}
     </div>
   )
@@ -406,11 +440,17 @@ function ChatMessageBubble({ message }: { message: ChatMessage }) {
 function SimpleMarkdownContent({ content }: { content: string }) {
   return (
     <div className="space-y-2">
-      {content.split('\n').filter(Boolean).map((line, index) => (
-        <p key={`${line}-${index}`} className="text-sm leading-relaxed text-foreground">
-          {line}
-        </p>
-      ))}
+      {content
+        .split('\n')
+        .filter(Boolean)
+        .map((line, index) => (
+          <p
+            key={`${line}-${index}`}
+            className="break-words text-sm leading-7 text-slate-700"
+          >
+            {line}
+          </p>
+        ))}
     </div>
   )
 }
