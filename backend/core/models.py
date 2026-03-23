@@ -183,3 +183,13 @@ class VisionExtraction(BaseModel):
 class HealthStatus(BaseModel):
     status: str
     vector_store_healthy: bool
+
+
+class ServiceIndex(BaseModel):
+    name: str
+    description: str
+    docs_url: str
+    openapi_url: str
+    health_url: str
+    identify_endpoint: str
+    query_endpoint: str

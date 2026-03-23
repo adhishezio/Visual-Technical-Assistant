@@ -1,0 +1,15 @@
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    env_file:
+      - .env
+    environment:
+      PORT: 8000
+      VECTOR_STORE: chroma
+      CHROMA_PERSIST_DIRECTORY: /app/db
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./db:/app/db

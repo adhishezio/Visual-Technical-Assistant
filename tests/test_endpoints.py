@@ -112,7 +112,12 @@ def test_query_endpoint_returns_safe_message_on_runtime_failure() -> None:
 def test_health_endpoint_reports_vector_store_status() -> None:
     app.dependency_overrides[get_health_vector_store] = lambda: FakeVectorStore(True)
 
+    root_response = client.get("/")
     response = client.get("/health")
 
+    assert root_response.status_code == 200
+    assert root_response.json()["name"] == "Visual Technical Assistant API"
+    assert root_response.json()["health_url"] == "/health"
+    assert root_response.json()["query_endpoint"] == "/query"
     assert response.status_code == 200
     assert response.json() == {"status": "ok", "vector_store_healthy": True}

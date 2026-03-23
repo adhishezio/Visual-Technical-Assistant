@@ -8,7 +8,7 @@ from fastapi import Depends, FastAPI
 from backend.api.routes.identify import router as identify_router
 from backend.api.routes.query import router as query_router
 from backend.core.config import get_settings
-from backend.core.models import HealthStatus
+from backend.core.models import HealthStatus, ServiceIndex
 from backend.vector_store import get_vector_store
 from backend.vector_store.base import VectorStore
 
@@ -32,6 +32,21 @@ def get_health_vector_store() -> VectorStore | None:
         return get_vector_store()
     except Exception:
         return None
+
+
+@app.get("/", response_model=ServiceIndex)
+async def service_index() -> ServiceIndex:
+    return ServiceIndex(
+        name=settings.app_name,
+        description=(
+            "Production-grade API for component identification and cited technical question answering."
+        ),
+        docs_url="/docs",
+        openapi_url="/openapi.json",
+        health_url="/health",
+        identify_endpoint="/identify",
+        query_endpoint="/query",
+    )
 
 
 @app.get("/health", response_model=HealthStatus)
